@@ -1,0 +1,2 @@
+echo "~$*" >> .gitignore
+echo ".DS_Store" >> .gitignore
