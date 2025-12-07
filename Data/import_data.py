@@ -17,7 +17,17 @@ import math
 import random
 import platform
 
-print('Operating System: ',platform.system())
+# NEW: check for -p flag (print to screen)
+PRINT_TO_SCREEN = ('-p' in sys.argv)
+
+print("\n========================================================")
+print("  CosmicWatch: Desktop Muon Detector – Data Acquisition")
+print("  Initialize your detectors, then select serial port(s).")
+print('  Operating System: ',platform.system())
+if PRINT_TO_SCREEN:
+    print("  [Option] Printing data to screen enabled (-p)")
+print("========================================================")
+
 
 def signal_handler(signal, frame):
     print('You pressed Ctrl+C!')
@@ -120,7 +130,7 @@ for i in range(len(det_names)):
     print("  "+str(i+1)+') '+det_names[i])
 '''
 # Start recording data to file.
-print("\nTaking data ...")
+print("Taking data ...")
 if platform.system() == "Windows":
     print("ctrl+break to termiante process")
 else:
@@ -138,7 +148,7 @@ while True:
         if globals()['Det%s' % str(i)].inWaiting():
             
             data = globals()['Det%s' % str(i)].readline().decode().replace('\r\n','')    # Wait and read data 
-            print(data)
+            #print(data)
             data = data.split("\t")
             
             ti = str(datetime.now()).split(" ")
@@ -147,13 +157,16 @@ while True:
             #data[1] = comp_time
             comp_date = ti[0].split('-')
             data.append(comp_date[2] + '/' +comp_date[1] + '/' + comp_date[0]) #ti[0].replace('-','/')
-            file.write('\t'.join(filter(None, data)) + '\n')
-            #for j in range(len(data)):
-            #    #print(data[j])
-            #    file.write(data[j]+'\t')
+            for j in range(len(data)):
+                #print(data[j])
+                file.write(data[j]+'\t')
             file.write("\n")
-            #print(str(i+'\t') for i in data)
-            #print(*data, sep='\t')
+            
+            # NEW: optionally also print to screen
+            if PRINT_TO_SCREEN:
+                print('\t'.join(data))
+
+
             event_number = int(data[0])
             if event_number % 1 ==0:
                 file.flush() 
