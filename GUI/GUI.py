@@ -141,7 +141,7 @@ class CWClass():
             data = np.genfromtxt(file_name, dtype = str, delimiter='\t', usecols=column_array, invalid_raise=False, skip_header=header_lines)
             event_number = data[:,0].astype(float) #first column of data
             PICO_timestamp_s = data[:,1].astype(float)
-            coincident = data[:,2].astype(bool)
+            coincident = data[:,2].astype(int).astype(bool)  # Convert to int first, then to bool
             adc = data[:,3].astype(int)
             sipm = data[:,4].astype(float)
             deadtime = data[:,5].astype(float)
@@ -1268,18 +1268,23 @@ class FuturisticDashboard(QWidget):
     def recalc_cw(self):
         """Recalculate CWClass when binning changes."""
         if hasattr(self, "cw"):   # Only if a file has already been loaded
-            file_name = self.cw.name   # currently only the basename, so better store the full path
+            # Get the file path
+            if hasattr(self.cw, 'file_path'):
+                file_name = self.cw.file_path
+            else:
+                self.feed_box.append("Error: Cannot recalculate - file path not stored")
+                return
+            
+            # Reload with new bin size
             try:
-                file_name = self.cw.file_path   # if you save it during load_file
-            except:
-                pass
-            self.cw = CWClass(file_name, self.selected_bin_time, self.feed_box)
-
-            #print(self.cw.coincidence_rate, self.cw.coincidence_rate_err)
-            #print(self.cw.adc)
-            self.feed_box.append(f"Recalculated with bin size = {self.selected_bin_time}s")
-            self.run_rate()   # auto-refresh the plot
-            self.apply_theme()
+                self.cw = CWClass(file_name, self.selected_bin_time, self.feed_box)
+                self.cw.file_path = file_name  # Store path again for next recalc
+                self.feed_box.append(f"Recalculated with bin size = {self.selected_bin_time}s")
+                self.run_rate()   # auto-refresh the plot
+            except Exception as e:
+                self.feed_box.append(f"Error recalculating: {str(e)}")
+        else:
+            self.feed_box.append("No data loaded yet. Load a file first.")
             
     def select_bin_30(self):
         self.binning_selected = True
