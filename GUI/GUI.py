@@ -664,12 +664,15 @@ class FuturisticDashboard(QWidget):
         load_btn.setIconSize(QSize(20, 20))
         load_btn.setStyleSheet(button_style)
         load_btn.clicked.connect(self.load_file)
+        load_btn.setToolTip("Load Data File")
         control_btns.addWidget(load_btn)
         #save
         save_btn = QToolButton()
         save_btn.setIcon(QIcon("save_white.png"))
         save_btn.setIconSize(QSize(20, 20))
         save_btn.setStyleSheet(button_style)
+        save_btn.setToolTip("Save Current Plot")
+        save_btn.clicked.connect(self.save_plot)
         control_btns.addWidget(save_btn)
         left_panel.addLayout(control_btns)
         # STOP button
@@ -678,6 +681,7 @@ class FuturisticDashboard(QWidget):
         stop_btn.setIconSize(QSize(20, 20))
         stop_btn.setStyleSheet(button_style)
         stop_btn.clicked.connect(self.stop_file)
+        stop_btn.setToolTip("Stop Data Acquisition")
         control_btns.addWidget(stop_btn)
         #record
         record_btn = QToolButton()
@@ -685,6 +689,7 @@ class FuturisticDashboard(QWidget):
         record_btn.setIconSize(QSize(20, 20))
         record_btn.setStyleSheet(button_style)
         record_btn.clicked.connect(self.record_file)
+        record_btn.setToolTip("Start Data Acquisition")
         control_btns.addWidget(record_btn)
         
         #portselection
@@ -727,7 +732,7 @@ class FuturisticDashboard(QWidget):
 
         binning_layout = QHBoxLayout()
 
-        self.binning_label = QLabel("Binning Time:")
+        self.binning_label = QLabel("Binning Time Interval:")
         self.binning_label.setStyleSheet("""
             font-family: 'Times New Roman', Times, serif;
             color: #eee;
@@ -1078,14 +1083,66 @@ class FuturisticDashboard(QWidget):
         refresh_btn.setIconSize(QSize(20, 20))
         refresh_btn.setStyleSheet(button_style)
         control_btns.addWidget(refresh_btn)
-        refresh_btn.clicked.connect(self.refresh_ports)   
+        refresh_btn.clicked.connect(self.refresh_ports)
+        refresh_btn.setToolTip("Refresh Serial Ports")
 
         self.theme_toggle = QToolButton()
         self.theme_toggle.setText("☀️ / 🌙")
         self.theme_toggle.setStyleSheet(button_style)
         self.theme_toggle.clicked.connect(self.toggle_theme)
-        control_btns.addWidget(self.theme_toggle)  
+        self.theme_toggle.setToolTip("Toggle Light/Dark Theme")
+        control_btns.addWidget(self.theme_toggle)
         
+        # Close/Quit button
+        close_btn = QToolButton()
+        close_btn.setText("X")
+        close_btn.setStyleSheet(button_style)
+        close_btn.clicked.connect(self.close_application)
+        close_btn.setToolTip("Close Application")
+        control_btns.addWidget(close_btn)
+        
+
+    def close_application(self):
+        """Properly close the application and clean up resources."""
+        # Stop any active recording
+        if hasattr(self, 'read_serial_active') and self.read_serial_active:
+            self.stop_file()
+        
+        # Close the application
+        self.feed_box.append("Closing application...")
+        QApplication.quit()
+
+    def save_plot(self):
+        """Save the current plot to a file."""
+        # Get the current plot type from the toolbar
+        plot_type = getattr(self.toolbar, 'plot_type', 'plot')
+        
+        # Determine default filename based on plot type and data source
+        if hasattr(self, 'cw') and hasattr(self.cw, 'file_path'):
+            # Use the loaded file's base name
+            base_name = self.cw.file_path.replace('.txt', '')
+        else:
+            # Use generic name for live data
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_name = f"plot_{timestamp}"
+        
+        default_filename = f"{base_name}_{plot_type}.pdf"
+        
+        # Open file dialog to choose save location
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Plot",
+            default_filename,
+            "PDF Files (*.pdf);;PNG Files (*.png);;All Files (*)"
+        )
+        
+        if filename:
+            try:
+                self.static_canvas.figure.savefig(filename, dpi=300, bbox_inches='tight')
+                self.feed_box.append(f"Plot saved to: {filename}")
+            except Exception as e:
+                self.feed_box.append(f"Error saving plot: {str(e)}")
 
     def apply_theme(self):
         t = self.themes[self.current_theme]
@@ -2034,7 +2091,18 @@ class FuturisticDashboard(QWidget):
             
 
 if __name__ == '__main__':
+    # Enable keyboard interrupt (Ctrl+C) to close the application
+    import signal
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+    
     app = QApplication(sys.argv)
     dashboard = FuturisticDashboard()
     dashboard.show()
-    sys.exit(app.exec())
+    
+    # Handle keyboard interrupt gracefully
+    try:
+        sys.exit(app.exec())
+    except KeyboardInterrupt:
+        print("\nKeyboard interrupt received. Closing application...")
+        dashboard.close()
+        sys.exit(0)
