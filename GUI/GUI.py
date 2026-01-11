@@ -3,23 +3,22 @@ import sys
 #from matplotlib.backends.backend_qt5 import NavigationToolbar2QT
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QApplication, QWidget, QPushButton, QLabel, QVBoxLayout,
-    QHBoxLayout, QGridLayout, QSlider, QTextEdit, QGroupBox, QProgressBar,
-    QFileDialog, QComboBox, QRadioButton, QButtonGroup, QToolButton,QFileDialog
+    QHBoxLayout, QGridLayout, QTextEdit,
+    QFileDialog, QComboBox, QRadioButton, QToolButton
 )
-from PyQt5.QtCore import (
-    Qt,QSize, Qt, QObject, pyqtSignal
+from PyQt6.QtCore import (
+    Qt, QSize, pyqtSignal
 )
-from PyQt5.QtGui import (
-    QPixmap,QIcon, QFont
+from PyQt6.QtGui import (
+    QPixmap, QIcon
 )
 import sys
 import time
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvas
-from matplotlib.backends.backend_qtagg import \
-    NavigationToolbar2QT as NavigationToolbar
+from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.backends.qt_compat import QtWidgets
 from matplotlib.figure import Figure
 import serial.tools.list_ports
@@ -763,7 +762,7 @@ class FuturisticDashboard(QWidget):
         # --- Add custom coordinate display ---
         self.coord_label = QLabel("x: -, y: -")
         self.coord_label.setStyleSheet("color: white;")   # will adapt to theme later
-        left_panel.addWidget(self.coord_label, alignment=Qt.AlignLeft)
+        left_panel.addWidget(self.coord_label, alignment=Qt.AlignmentFlag.AlignLeft)
 
         # --- Connect mpl event for mouse motion ---
         def update_coords(event):
@@ -785,9 +784,8 @@ class FuturisticDashboard(QWidget):
                 color: #00ffcc;
             }
             QToolButton:pressed {
-                background-color: 'grey'};    /* Optional pressed color */
+                background-color: grey;
             }
-
         """)
 
         
@@ -933,7 +931,7 @@ class FuturisticDashboard(QWidget):
         box1, self.status_label, self.avg_stat1 = make_labeled_box("Status:", "")
         #self.stats_layout.addWidget(box1)
         self.stats_layout.addWidget(box1)
-        right_panel.addWidget(self.stats_container, 1, 0, alignment=Qt.AlignTop)
+        right_panel.addWidget(self.stats_container, 1, 0, alignment=Qt.AlignmentFlag.AlignTop)
         self.data_ready2.connect(self.avg_stat1.setPlainText) 
 
 
@@ -960,10 +958,10 @@ class FuturisticDashboard(QWidget):
         image_container.setStyleSheet("background: transparent; border: none;")
         # --- PNG image ABOVE the STL widget ---
         self.logo_label = QLabel()
-        self.logo_label.setAlignment(Qt.AlignCenter)
+        self.logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.logo_label.setStyleSheet("background: transparent;")
-        self.logo_label.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.logo_label.setAttribute(Qt.WA_OpaquePaintEvent, False)
+        self.logo_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.logo_label.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
         self.logo_label.setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
 
         logo_path = "logo_white.png"  # <-- update to your actual path
@@ -971,12 +969,12 @@ class FuturisticDashboard(QWidget):
         if not pix.isNull():
             # scale to fit width nicely, keep aspect
             self.logo_label.setPixmap(
-                pix.scaled(210, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                pix.scaled(210, 60, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             )
         else:
             self.logo_label.setText("logo_white.png not found")
 
-        image_layout.addWidget(self.logo_label, alignment=Qt.AlignHCenter | Qt.AlignTop)
+        image_layout.addWidget(self.logo_label, alignment=Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
 
         self.gl_widget = gl.GLViewWidget()
         self.gl_widget.setFixedSize(250, 250)
@@ -987,7 +985,7 @@ class FuturisticDashboard(QWidget):
         vertices = your_mesh.vectors.reshape(-1, 3)
         faces = np.arange(len(vertices)).reshape(-1, 3)
 
-        image_layout.addWidget(self.gl_widget, alignment=Qt.AlignTop)
+        image_layout.addWidget(self.gl_widget, alignment=Qt.AlignmentFlag.AlignTop)
         image_layout.addStretch(1)
         image_layout.setContentsMargins(0, 0, 0, 130)
 
@@ -1001,9 +999,9 @@ class FuturisticDashboard(QWidget):
         self.gl_widget.addItem(mesh_item)
 
         
-        right_panel.addWidget(image_container, 0, 0, alignment=Qt.AlignTop)
+        right_panel.addWidget(image_container, 0, 0, alignment=Qt.AlignmentFlag.AlignTop)
 
-        main_layout.addLayout(right_panel, 0, 1, alignment=Qt.AlignTop)
+        main_layout.addLayout(right_panel, 0, 1, alignment=Qt.AlignmentFlag.AlignTop)
        
         
 
@@ -1046,9 +1044,7 @@ class FuturisticDashboard(QWidget):
         #adding all buttons
         left_panel.addLayout(control_btns)
 
-        
-
-        self.port_dropdown.activated[str].connect(self.handle_port_selected)
+        self.port_dropdown.activated.connect(lambda idx: self.handle_port_selected(self.port_dropdown.itemText(idx)))
         
 
         refresh_btn = QToolButton()
@@ -1184,7 +1180,7 @@ class FuturisticDashboard(QWidget):
         pix = QPixmap(logo_file)
         if not pix.isNull():
             self.logo_label.setPixmap(
-                pix.scaled(210, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                pix.scaled(210, 60, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             )
         else:
             self.logo_label.setText(f"{logo_file} not found")
@@ -1787,4 +1783,4 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     dashboard = FuturisticDashboard()
     dashboard.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
