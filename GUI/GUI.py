@@ -783,35 +783,11 @@ class FuturisticDashboard(QWidget):
 
         left_panel.addWidget(self.static_canvas)
      
-        # Create toolbar
-        #toolbar_static = NavigationToolbar(self.static_canvas, self)
-        #toolbar_static = CustomNavigationToolbar(
-        #    self.static_canvas,
-        #    self,
-        #    get_filename_func=lambda: getattr(self, "cw", None) and getattr(self.cw, "file_path", "plot"),
-        #    plot_type="rate.pdf"   # change dynamically when different run_* methods are called
-        #)
-        self.toolbar = CustomNavigationToolbar(
-            self.static_canvas,
-            self,
-            get_filename_func=lambda: getattr(self.cw, "file_path", "plot"),
-            plot_type="plot"   # default; updated in run_* methods
-        )
-
-        #toolbar_static = CustomNavigationToolbar(self.static_canvas, self, plot_type="rate")
-
-        # Suppress built-in coordinate readout
-        def suppress_message(*args, **kwargs):
-            pass
-        self.toolbar.set_message = suppress_message
-
-        # Center the toolbar
-        toolbar_layout = QHBoxLayout()
-        toolbar_layout.addStretch()
-        #toolbar_layout.addWidget(toolbar_static)
-        toolbar_layout.addWidget(self.toolbar)
-        toolbar_layout.addStretch()
-        left_panel.addLayout(toolbar_layout)
+        # Toolbar removed to maximize plotting area
+        # Create a minimal toolbar object for compatibility with existing code
+        class DummyToolbar:
+            plot_type = "plot"
+        self.toolbar = DummyToolbar()
 
         # --- Add custom coordinate display ---
         self.coord_label = QLabel("x: -, y: -")
@@ -827,22 +803,6 @@ class FuturisticDashboard(QWidget):
                 self.coord_label.setText("x: -, y: -")
 
         self.static_canvas.mpl_connect("motion_notify_event", update_coords)
-
-        # --- Optional: style toolbar buttons ---
-        self.toolbar.setStyleSheet("""
-            QToolBar { border-radius: 8px; }
-            QToolButton {
-                background-color: white;
-                border: 2px solid black;
-                border-radius: 8px;
-                color: #00ffcc;
-            }
-            QToolButton:pressed {
-                background-color: grey;
-            }
-        """)
-
-        
 
         
         self.static_ax = self.static_canvas.figure.subplots()
@@ -1401,7 +1361,6 @@ class FuturisticDashboard(QWidget):
             if xscale == 'linear':
                 bins = np.linspace(xmin,xmax,nbins)
             self.static_ax.clear()
-            #self.static_ax.set_xlabel(xlabel, size=fontsize, color=fg)
             
             self.static_ax.set_axisbelow(True)
             self.static_ax.grid(which='both', linestyle='--', alpha=0.5, zorder=0)
@@ -1441,6 +1400,7 @@ class FuturisticDashboard(QWidget):
 
             #for text in legend.get_texts():
             #    text.set_color('white')
+            self.static_ax.set_xlabel(xlabel, size=fontsize)
             self.static_ax.set_ylabel(r'Rate/bin [s$^{-1}$]', size=fontsize)#3, color = fg)
             self.static_ax.set_xlim(xmin, xmax)
             self.static_ax.set_ylim(ymin, ymax)
@@ -1651,7 +1611,7 @@ class FuturisticDashboard(QWidget):
                 r'Coincident: ' + str(f1.count_rate_coincident) + '+/-' + str(f1.count_rate_err_coincident) +' Hz'],
         ax = self.static_ax,
         xmin=min(f1.adc), xmax= max(f1.adc),  ymin=0.1e-3, ymax=1.1,nbins=101,
-        xlabel='Meausred ADC peak value [0-4095]',
+        xlabel='Measured 12-bit ADC peak value [0-4095]',
         pdf_name= '_ADC.pdf',title = 'ADC Measurement')
         self.apply_theme()
 
