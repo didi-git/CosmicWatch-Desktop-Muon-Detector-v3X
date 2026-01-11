@@ -59,7 +59,7 @@ class CWClass():
             data = np.genfromtxt(fname, dtype = str, delimiter='\t', usecols=column_array, invalid_raise=False, skip_header=header_lines)
             event_number = data[:,0].astype(float) #first column of data
             PICO_timestamp_s = data[:,1].astype(float)
-            coincident = data[:,2].astype(bool)
+            coincident = data[:,2].astype(int).astype(bool)
             adc = data[:,3].astype(int)
             sipm = data[:,4].astype(float)
             deadtime = data[:,5].astype(float)
@@ -104,7 +104,7 @@ class CWClass():
             data = np.genfromtxt(fname, dtype = str, delimiter='\t', usecols=column_array, invalid_raise=False, skip_header=header_lines)
             event_number = data[:,0].astype(float)#first column of data
             PICO_timestamp_s = data[:,1].astype(float)
-            coincident = data[:,2].astype(bool)
+            coincident = data[:,2].astype(int).astype(bool)
             adc = data[:,3].astype(int)
             sipm = data[:,4].astype(float)
             deadtime = data[:,5].astype(float)
