@@ -183,7 +183,7 @@ class CWClass():
             data = np.genfromtxt(file_name, dtype = str, delimiter='\t', usecols=column_array, invalid_raise=False, skip_header=header_lines)
             event_number = data[:,0].astype(float)#first column of data
             PICO_timestamp_s = data[:,1].astype(float)
-            coincident = data[:,2].astype(bool)
+            coincident = data[:,2].astype(int).astype(bool)  # Convert to int first, then to bool
             adc = data[:,3].astype(int)
             sipm = data[:,4].astype(float)
             deadtime = data[:,5].astype(float)
@@ -1815,6 +1815,12 @@ class FuturisticDashboard(QWidget):
         if f1 is None:
             self.feed_box.append("No data available. Load a file or start recording.")
             return
+        
+        # Calculate xmin/xmax with protection for log scale (must be positive)
+        sipm_min = min(f1.sipm)
+        sipm_max = max(f1.sipm)
+        xmin = max(0.01, sipm_min - 2)  # Ensure xmin is at least 0.1 for log scale
+        xmax = sipm_max + 100
             
         c = self.NPlot(
         data=[f1.sipm, f1.sipm[~f1.select_coincident],f1.sipm[f1.select_coincident]],
@@ -1824,7 +1830,7 @@ class FuturisticDashboard(QWidget):
                 r'Non-Coincident:  ' + str(f1.count_rate_non_coincident) + '+/-' + str(f1.count_rate_err_non_coincident) +' Hz',
                 r'Coincident: ' + str(f1.count_rate_coincident) + '+/-' + str(f1.count_rate_err_coincident) +' Hz'],
         ax = self.static_ax,
-        xmin=min(f1.sipm)-2, xmax=max(f1.sipm)+100, ymin=0.1e-3, ymax=1.1,xscale='log',
+        xmin=xmin, xmax=xmax, ymin=0.1e-3, ymax=1.1,xscale='log',
         xlabel='SiPM Peak Voltage [mV]',fit_gaussian=True,
         pdf_name='_SiPM_peak_voltage.pdf',title = 'SiPM Peak Voltage Measurement',)
         self.apply_theme()
@@ -1854,7 +1860,7 @@ class FuturisticDashboard(QWidget):
         ymax = 1.3*max(f1.binned_count_rate) if len(f1.binned_count_rate) > 0 else 1,
         figsize = [7,5],
         fontsize = 16,alpha = 1,
-        xscale = 'linear',yscale = 'linear',xlabel = 'Time [min]',ylabel = r'Rate [s$^{-1}$]',
+        xscale = 'linear',yscale = 'linear',xlabel = 'Time since boot [min]',ylabel = r'Rate [s$^{-1}$]',
         loc = 1, pdf_name='_rate.pdf',title = 'Detector Count Rate')
         #print(f1.binned_count_rate_err_non_coincident)
         self.static_canvas.draw()
