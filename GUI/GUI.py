@@ -128,7 +128,8 @@ class CWClass():
             if "#" in lineList[i]:
                 last_line_of_header = i+1
                 #Determine number of columns by looking at the second last line in the file.
-        number_of_columns = len(lineList[len(lineList)-2].split("\t"))
+        # Strip whitespace and filter empty strings to handle trailing tabs
+        number_of_columns = len([col for col in lineList[len(lineList)-2].strip().split("\t") if col])
         column_array = range(0,number_of_columns)
 
 
@@ -154,6 +155,24 @@ class CWClass():
             gyro_x = []
             gyro_y = []
             gyro_z = []
+            # Parse accelerometer data
+            for i in range(len(accelerometer)):
+                accel = accelerometer[i].split(':')
+                accel_x.append(accel[0])
+                accel_y.append(accel[1])
+                accel_z.append(accel[2])
+            accel_x = np.asarray(accel_x).astype(float)
+            accel_y = np.asarray(accel_y).astype(float)
+            accel_z = np.asarray(accel_z).astype(float)
+            # Parse gyro data
+            for i in range(len(Gyro)):
+                gyro = Gyro[i].split(':')
+                gyro_x.append(gyro[0])
+                gyro_y.append(gyro[1])
+                gyro_z.append(gyro[2])
+            gyro_x = np.asarray(gyro_x).astype(float)
+            gyro_y = np.asarray(gyro_y).astype(float)
+            gyro_z = np.asarray(gyro_z).astype(float)
             detName = data[:,10]
             comp_time = data[:,11]
             comp_date = data[:,12]
@@ -195,7 +214,10 @@ class CWClass():
             gyro_y = np.asarray(gyro_y).astype(float)
             gyro_z = np.asarray(gyro_z).astype(float)
         else: 
-            self.feed_box.append(f"Incorrect number of collumns in file: %1u' %number_of_columns")
+            error_msg = f"Incorrect number of columns in file: {number_of_columns}. Expected 10 or 13 columns."
+            self.feed_box.append(error_msg)
+            raise ValueError(error_msg)
+            
         if file_from_computer:
             time_stamp = []
             for i in range(len(comp_date)):
@@ -258,6 +280,7 @@ class CWClass():
 
         if file_from_computer:
             self.live_time        = (self.total_time_s - self.total_deadtime_s)
+            self.live_time_s      = self.live_time  # Alias for consistency with sdcard files
             self.weights          = np.ones(len(event_number)) / self.live_time
             self.count_rate       = self.total_counts/self.live_time 
             self.count_rate_err   = np.sqrt(self.total_counts)/self.live_time 
@@ -304,6 +327,37 @@ class CWClass():
             sum_gyro_z, _ = np.histogram(self.time_stamp_s, bins=bins, weights=self.gyro_z)
             count_gyro_z, _ = np.histogram(self.time_stamp_s, bins=bins)
             self.binned_gyro_z = sum_gyro_z / np.maximum(count_gyro_z, 1)  # Avoid division by
+            
+            # Calculate binned count rates
+            self.binned_counts = counts
+            self.binned_counts_err = np.sqrt(counts)
+            self.binned_count_rate = counts / bin_livetime
+            self.binned_count_rate_err = np.sqrt(counts) / bin_livetime
+            
+            # Calculate binned coincident count rates
+            counts_coincident, _ = np.histogram(self.time_stamp_s[self.select_coincident], bins=bins)
+            bin_livetime_coincident, _ = np.histogram(self.time_stamp_s[self.select_coincident], bins=bins, weights=self.PICO_event_livetime_s[self.select_coincident])
+            self.total_coincident = len(self.time_stamp_s[self.select_coincident])
+            self.binned_counts_coincident = counts_coincident
+            self.binned_counts_err_coincident = np.sqrt(counts_coincident)
+            self.binned_count_rate_coincident = counts_coincident / np.maximum(bin_livetime, 1)
+            self.binned_count_rate_err_coincident = np.sqrt(counts_coincident) / np.maximum(bin_livetime, 1)
+            
+            # Calculate coincident rate statistics
+            self.count_rate_coincident = self.total_coincident / self.live_time
+            self.count_rate_err_coincident = np.sqrt(self.total_coincident) / self.live_time
+            
+            # Calculate binned non-coincident count rates
+            counts_non_coincident, _ = np.histogram(self.time_stamp_s[~self.select_coincident], bins=bins)
+            self.total_non_coincident = len(self.time_stamp_s[~self.select_coincident])
+            self.binned_counts_non_coincident = counts_non_coincident
+            self.binned_counts_err_non_coincident = np.sqrt(counts_non_coincident)
+            self.binned_count_rate_non_coincident = counts_non_coincident / np.maximum(bin_livetime, 1)
+            self.binned_count_rate_err_non_coincident = np.sqrt(counts_non_coincident) / np.maximum(bin_livetime, 1)
+            
+            # Calculate non-coincident rate statistics
+            self.count_rate_non_coincident = self.total_non_coincident / self.live_time
+            self.count_rate_err_non_coincident = np.sqrt(self.total_non_coincident) / self.live_time
         
         elif file_from_sdcard:
             self.live_time_s        = (self.PICO_total_time_s - self.total_deadtime_s)
@@ -1269,22 +1323,29 @@ class FuturisticDashboard(QWidget):
         if self.binning_selected == False: 
                 self.feed_box.append("Select bin time first.")
         if self.binning_selected:
-            options = QFileDialog.options()
-            file_name, _ = QFileDialog.getOpenFileName(self, "Load File", "", "Text Files (*.txt);;All Files (*)", options=options)
+            file_name, _ = QFileDialog.getOpenFileName(self, "Load File", "", "Text Files (*.txt);;All Files (*)")
             if file_name:
-                self.cw = CWClass(file_name, self.selected_bin_time, self.feed_box)
-                self.cw.file_path = file_name   # ⬅️ store so we can reload later
-                self.run_rate()
+                # Extract just the filename from the full path
+                file_basename = file_name.split('/')[-1]
+                self.feed_box.append(f"Opening data file: {file_basename}")
                 
-                self.data_ready2.emit(
-                    f"Total Live Time: {self.cw.live_time_s:,.2f} s\n"
-                    f"\n"
-                    f"Total Singles: {self.cw.total_counts:,}\n"
-                    f"Rate: {self.cw.count_rate:,.4f} ± {self.cw.count_rate_err:,.4f} Hz\n"
-                    f"\n"
-                    f"Total Coincidences: {self.cw.total_coincident:,}\n"
-                    f"Rate: {self.cw.count_rate_coincident:,.4f} ± {self.cw.count_rate_err_coincident:,.4f} Hz"
-                )
+                try:
+                    self.cw = CWClass(file_name, self.selected_bin_time, self.feed_box)
+                    self.cw.file_path = file_name   # ⬅️ store so we can reload later
+                    self.run_rate()
+                    
+                    self.data_ready2.emit(
+                        f"Total Live Time: {self.cw.live_time_s:,.2f} s\n"
+                        f"\n"
+                        f"Total Singles: {self.cw.total_counts:,}\n"
+                        f"Rate: {self.cw.count_rate:,.4f} ± {self.cw.count_rate_err:,.4f} Hz\n"
+                        f"\n"
+                        f"Total Coincidences: {self.cw.total_coincident:,}\n"
+                        f"Rate: {self.cw.count_rate_coincident:,.4f} ± {self.cw.count_rate_err_coincident:,.4f} Hz"
+                    )
+                except (ValueError, IndexError) as e:
+                    self.feed_box.append(f"Error loading file: {str(e)}")
+                    return
                 #if file_name:
                 #self.cw = CWClass(file_name, self.selected_bin_time,self.feed_box)
                 # ✅ Only if a file was actually chosen
@@ -1770,20 +1831,36 @@ class FuturisticDashboard(QWidget):
                 r'Non-Coincident:  ' + str(f1.count_rate_non_coincident) + '+/-' + str(f1.count_rate_err_non_coincident) +' Hz',
                 r'Coincident:  ' + str(f1.count_rate_coincident) + '+/-' + str(f1.count_rate_err_coincident) +' Hz'],
         ax = self.static_ax,
-        xmin = min(f1.PICO_timestamp_s/60), xmax = max(f1.PICO_timestamp_s/60),ymin = 0,ymax = 1.3*max(f1.binned_count_rate),
+        xmin = min(f1.binned_time_m) if len(f1.binned_time_m) > 0 else 0, 
+        xmax = max(f1.binned_time_m) if len(f1.binned_time_m) > 0 else 1,
+        ymin = 0,
+        ymax = 1.3*max(f1.binned_count_rate) if len(f1.binned_count_rate) > 0 else 1,
         figsize = [7,5],
         fontsize = 16,alpha = 1,
         xscale = 'linear',yscale = 'linear',xlabel = 'Time [min]',ylabel = r'Rate [s$^{-1}$]',
         loc = 1, pdf_name='_rate.pdf',title = 'Detector Count Rate')
         #print(f1.binned_count_rate_err_non_coincident)
+        self.static_canvas.draw()
         self.apply_theme()
 
     def stop_file(self):
-        self.serial_connection.close()
-        self.feed_box.append("Serial connection closed.")
-        self.data_file.close()
-        self.feed_box.append("Data file closed.")    
+        # First, signal the thread to stop
         self.read_serial_active = False
+        self.feed_box.append("Stopping recording...")
+        
+        # Wait briefly for the thread to exit the loop
+        import time
+        time.sleep(0.2)
+        
+        # Now safely close the connections
+        if hasattr(self, 'serial_connection') and self.serial_connection.is_open:
+            self.serial_connection.close()
+            self.feed_box.append("Serial connection closed.")
+        
+        if hasattr(self, 'data_file') and not self.data_file.closed:
+            self.data_file.close()
+            self.feed_box.append("Data file closed.")
+        
         self.feed_box.append("Recording stopped and file closed.")
 
     def record_file(self):
@@ -1850,7 +1927,7 @@ class FuturisticDashboard(QWidget):
 
                 while self.read_serial_active:
 
-                    if self.serial_connection.inWaiting():
+                    if self.serial_connection.in_waiting:
                         
                         data = self.serial_connection.readline().decode().replace('\r\n','')    # Wait and read data 
                         #print(data)
