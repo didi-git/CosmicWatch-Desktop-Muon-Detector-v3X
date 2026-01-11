@@ -1073,8 +1073,20 @@ class FuturisticDashboard(QWidget):
 
         self.feed_box = QTextEdit()
         self.feed_box.setReadOnly(True)
-        self.feed_box.setStyleSheet("background-color: #1c2b3a; color: #FFFFFF; border-radius: 3px")
+        self.feed_box.setStyleSheet("""
+            QTextEdit {
+                background-color: #1c2b3a; 
+                color: #FFFFFF; 
+                border-radius: 3px;
+                padding: 8px;
+                padding-bottom: 12px;
+            }
+        """)
         self.feed_box.setFixedHeight(200)
+        # Set document margins and line height to prevent text clipping
+        self.feed_box.document().setDocumentMargin(3)
+        # Ensure the viewport has proper margins
+        self.feed_box.setViewportMargins(0, 0, 0, 8)
         bottom_panel.addWidget(self.feed_box)
 
         # ✅ Add bottom panel to row 1, spanning 2 columns
