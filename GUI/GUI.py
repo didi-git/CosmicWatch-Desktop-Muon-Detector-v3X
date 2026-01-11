@@ -1269,7 +1269,7 @@ class FuturisticDashboard(QWidget):
         if self.binning_selected == False: 
                 self.feed_box.append("Select bin time first.")
         if self.binning_selected:
-            options = QFileDialog.Options()
+            options = QFileDialog.options()
             file_name, _ = QFileDialog.getOpenFileName(self, "Load File", "", "Text Files (*.txt);;All Files (*)", options=options)
             if file_name:
                 self.cw = CWClass(file_name, self.selected_bin_time, self.feed_box)
@@ -1429,10 +1429,125 @@ class FuturisticDashboard(QWidget):
             self.static_ax.figure.tight_layout()
             self.static_ax.figure.canvas.draw()   
             
+    def get_live_cw_object(self):
+        """Create a CWClass-like object from live recording data."""
+        if not hasattr(self, 'live_data') or len(self.live_data['event_number']) == 0:
+            return None
+        
+        # Create a simple object to hold the data
+        class LiveCW:
+            pass
+        
+        cw = LiveCW()
+        cw.name = "Live Data"
+        cw.file_path = "live"
+        
+        # Convert lists to numpy arrays
+        cw.event_number = np.array(self.live_data['event_number'])
+        cw.PICO_timestamp_s = np.array(self.live_data['PICO_timestamp_s'])
+        cw.select_coincident = np.array(self.live_data['coincident'])
+        cw.adc = np.array(self.live_data['adc'])
+        cw.sipm = np.array(self.live_data['sipm'])
+        cw.temperature = np.array(self.live_data['temperature'])
+        cw.pressure = np.array(self.live_data['pressure'])
+        cw.accel_x = np.array(self.live_data['accel_x'])
+        cw.accel_y = np.array(self.live_data['accel_y'])
+        cw.accel_z = np.array(self.live_data['accel_z'])
+        cw.gyro_x = np.array(self.live_data['gyro_x'])
+        cw.gyro_y = np.array(self.live_data['gyro_y'])
+        cw.gyro_z = np.array(self.live_data['gyro_z'])
+        
+        # Calculate time-based values
+        deadtime = np.array(self.live_data['deadtime'])
+        event_deadtime_s = np.diff(np.append([0], deadtime))
+        cw.event_deadtime_s = event_deadtime_s
+        cw.PICO_event_livetime_s = np.diff(np.append([0], cw.PICO_timestamp_s)) - event_deadtime_s
+        
+        cw.PICO_total_time_s = np.max(cw.PICO_timestamp_s) - np.min(cw.PICO_timestamp_s)
+        cw.total_deadtime_s = np.max(deadtime) - np.min(deadtime)
+        cw.live_time_s = cw.PICO_total_time_s - cw.total_deadtime_s
+        
+        cw.total_counts = int(np.max(cw.event_number) - np.min(cw.event_number))
+        cw.weights = np.ones(len(cw.event_number)) / cw.live_time_s
+        
+        cw.count_rate = cw.total_counts / cw.live_time_s
+        cw.count_rate_err = np.sqrt(cw.total_counts) / cw.live_time_s
+        
+        # Calculate coincident counts
+        cw.total_coincident = np.sum(cw.select_coincident)
+        cw.count_rate_coincident = cw.total_coincident / cw.live_time_s
+        cw.count_rate_err_coincident = np.sqrt(cw.total_coincident) / cw.live_time_s
+        
+        cw.total_non_coincident = cw.total_counts - cw.total_coincident
+        cw.count_rate_non_coincident = cw.total_non_coincident / cw.live_time_s
+        cw.count_rate_err_non_coincident = np.sqrt(cw.total_non_coincident) / cw.live_time_s
+        
+        # Bin the data
+        bin_size = getattr(self, 'selected_bin_time', 30)
+        bins = range(int(np.min(cw.PICO_timestamp_s)), int(np.max(cw.PICO_timestamp_s)), bin_size)
+        
+        counts, binEdges = np.histogram(cw.PICO_timestamp_s, bins=bins)
+        bin_livetime, _ = np.histogram(cw.PICO_timestamp_s, bins=bins, weights=cw.PICO_event_livetime_s)
+        
+        cw.binned_count_rate = counts / bin_livetime
+        cw.binned_count_rate_err = np.sqrt(counts) / bin_livetime
+        
+        counts_coincident, _ = np.histogram(cw.PICO_timestamp_s[cw.select_coincident], bins=bins)
+        cw.binned_count_rate_coincident = counts_coincident / bin_livetime
+        cw.binned_count_rate_err_coincident = np.sqrt(counts_coincident) / bin_livetime
+        
+        counts_non_coincident, _ = np.histogram(cw.PICO_timestamp_s[~cw.select_coincident], bins=bins)
+        cw.binned_count_rate_non_coincident = counts_non_coincident / bin_livetime
+        cw.binned_count_rate_err_non_coincident = np.sqrt(counts_non_coincident) / bin_livetime
+        
+        # Bin other measurements
+        sum_pressure, _ = np.histogram(cw.PICO_timestamp_s, bins=bins, weights=cw.pressure)
+        count_pressure, _ = np.histogram(cw.PICO_timestamp_s, bins=bins)
+        cw.binned_pressure = sum_pressure / np.maximum(count_pressure, 1)
+        
+        sum_temperature, _ = np.histogram(cw.PICO_timestamp_s, bins=bins, weights=cw.temperature)
+        count_temperature, _ = np.histogram(cw.PICO_timestamp_s, bins=bins)
+        cw.binned_temperature = sum_temperature / np.maximum(count_temperature, 1)
+        
+        sum_accel_x, _ = np.histogram(cw.PICO_timestamp_s, bins=bins, weights=cw.accel_x)
+        count_accel_x, _ = np.histogram(cw.PICO_timestamp_s, bins=bins)
+        cw.binned_accel_x = sum_accel_x / np.maximum(count_accel_x, 1)
+        
+        sum_accel_y, _ = np.histogram(cw.PICO_timestamp_s, bins=bins, weights=cw.accel_y)
+        count_accel_y, _ = np.histogram(cw.PICO_timestamp_s, bins=bins)
+        cw.binned_accel_y = sum_accel_y / np.maximum(count_accel_y, 1)
+        
+        sum_accel_z, _ = np.histogram(cw.PICO_timestamp_s, bins=bins, weights=cw.accel_z)
+        count_accel_z, _ = np.histogram(cw.PICO_timestamp_s, bins=bins)
+        cw.binned_accel_z = sum_accel_z / np.maximum(count_accel_z, 1)
+        
+        sum_gyro_x, _ = np.histogram(cw.PICO_timestamp_s, bins=bins, weights=cw.gyro_x)
+        count_gyro_x, _ = np.histogram(cw.PICO_timestamp_s, bins=bins)
+        cw.binned_gyro_x = sum_gyro_x / np.maximum(count_gyro_x, 1)
+        
+        sum_gyro_y, _ = np.histogram(cw.PICO_timestamp_s, bins=bins, weights=cw.gyro_y)
+        count_gyro_y, _ = np.histogram(cw.PICO_timestamp_s, bins=bins)
+        cw.binned_gyro_y = sum_gyro_y / np.maximum(count_gyro_y, 1)
+        
+        sum_gyro_z, _ = np.histogram(cw.PICO_timestamp_s, bins=bins, weights=cw.gyro_z)
+        count_gyro_z, _ = np.histogram(cw.PICO_timestamp_s, bins=bins)
+        cw.binned_gyro_z = sum_gyro_z / np.maximum(count_gyro_z, 1)
+        
+        bincenters = 0.5 * (binEdges[1:] + binEdges[:-1])
+        cw.binned_time_s = bincenters
+        cw.binned_time_m = bincenters / 60.
+        
+        return cw
 
     def run_adc(self):
         self.toolbar.plot_type = "ADC"
-        f1 = self.cw
+        # Use live data if recording, otherwise use loaded file data
+        f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
+        
+        if f1 is None:
+            self.feed_box.append("No data available. Load a file or start recording.")
+            return
+            
         x_min = np.min(f1.adc)
         x_max = np.max(f1.adc)
 
@@ -1464,7 +1579,13 @@ class FuturisticDashboard(QWidget):
 
     def run_temperature(self):
         self.toolbar.plot_type = "temperature"
-        f1=self.cw
+        # Use live data if recording, otherwise use loaded file data
+        f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
+        
+        if f1 is None:
+            self.feed_box.append("No data available. Load a file or start recording.")
+            return
+            
         y_min = np.min(f1.binned_temperature)
         y_max = np.max(f1.binned_temperature)
         span = y_max - y_min
@@ -1485,7 +1606,13 @@ class FuturisticDashboard(QWidget):
     
     def run_gyro(self):
         self.toolbar.plot_type = "gyro"
-        f1 = self.cw
+        # Use live data if recording, otherwise use loaded file data
+        f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
+        
+        if f1 is None:
+            self.feed_box.append("No data available. Load a file or start recording.")
+            return
+            
         all_y = np.concatenate([
             f1.binned_gyro_x,
             f1.binned_gyro_y,
@@ -1528,7 +1655,13 @@ class FuturisticDashboard(QWidget):
 
     def run_acc(self):
         self.toolbar.plot_type = "linear_acceleration"
-        f1 = self.cw
+        # Use live data if recording, otherwise use loaded file data
+        f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
+        
+        if f1 is None:
+            self.feed_box.append("No data available. Load a file or start recording.")
+            return
+            
         all_y = np.concatenate([
             f1.binned_accel_x,
             f1.binned_accel_y,
@@ -1571,7 +1704,13 @@ class FuturisticDashboard(QWidget):
     
     def run_pressure(self):
         self.toolbar.plot_type = "pressure"
-        f1 = self.cw
+        # Use live data if recording, otherwise use loaded file data
+        f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
+        
+        if f1 is None:
+            self.feed_box.append("No data available. Load a file or start recording.")
+            return
+            
         y_min = np.min(f1.binned_pressure)
         y_max = np.max(f1.binned_pressure)
         span = y_max - y_min
@@ -1592,7 +1731,13 @@ class FuturisticDashboard(QWidget):
 
     def run_voltage(self):
         self.toolbar.plot_type = "SiPM_pulse_height"
-        f1 = self.cw
+        # Use live data if recording, otherwise use loaded file data
+        f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
+        
+        if f1 is None:
+            self.feed_box.append("No data available. Load a file or start recording.")
+            return
+            
         c = self.NPlot(
         data=[f1.sipm, f1.sipm[~f1.select_coincident],f1.sipm[f1.select_coincident]],
         weights=[f1.weights, f1.weights[~f1.select_coincident],f1.weights[f1.select_coincident]],
@@ -1609,7 +1754,13 @@ class FuturisticDashboard(QWidget):
     def run_rate(self):
 
         self.toolbar.plot_type = "rate" 
-        f1 = self.cw
+        # Use live data if recording, otherwise use loaded file data
+        f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
+        
+        if f1 is None:
+            self.feed_box.append("No data available. Load a file or start recording.")
+            return
+            
         #self.toolbar.plot_type = "rate"
         c = self.ratePlot(time = [f1.binned_time_m,f1.binned_time_m,f1.binned_time_m],
         count_rates = [f1.binned_count_rate,f1.binned_count_rate_non_coincident,f1.binned_count_rate_coincident],
@@ -1646,8 +1797,25 @@ class FuturisticDashboard(QWidget):
             self.start_timestamp_dt = datetime.now()
             self.start_timestamp_str = self.start_timestamp_dt.strftime("%Y-%m-%d_%H-%M-%S")
             self.read_serial_active = True
-            #self.timer_thread = threading.Thread(target=self.timer_counter, daemon=True)
-            # self.timer_thread.start()
+            
+            # Initialize live data storage for plotting
+            self.live_data = {
+                'event_number': [],
+                'PICO_timestamp_s': [],
+                'coincident': [],
+                'adc': [],
+                'sipm': [],
+                'deadtime': [],
+                'temperature': [],
+                'pressure': [],
+                'accel_x': [],
+                'accel_y': [],
+                'accel_z': [],
+                'gyro_x': [],
+                'gyro_y': [],
+                'gyro_z': []
+            }
+            
             filename = f"CW_data_{self.start_timestamp_str}.txt"
             # Full path for the new file
             filepath = os.path.join(cwd, filename)
@@ -1690,6 +1858,34 @@ class FuturisticDashboard(QWidget):
                         data = data.split("\t")
                         if data[2].strip() == '1':
                             self.coincidence_counter += 1
+                        
+                        # Store live data for plotting
+                        try:
+                            if len(data) >= 10:  # Make sure we have enough fields
+                                self.live_data['event_number'].append(float(data[0]))
+                                self.live_data['PICO_timestamp_s'].append(float(data[1]))
+                                self.live_data['coincident'].append(data[2].strip() == '1')
+                                self.live_data['adc'].append(int(data[3]))
+                                self.live_data['sipm'].append(float(data[4]))
+                                self.live_data['deadtime'].append(float(data[5]))
+                                self.live_data['temperature'].append(float(data[6]))
+                                self.live_data['pressure'].append(float(data[7]))
+                                
+                                # Parse accelerometer data
+                                accel_parts = data[8].split(':')
+                                if len(accel_parts) == 3:
+                                    self.live_data['accel_x'].append(float(accel_parts[0]))
+                                    self.live_data['accel_y'].append(float(accel_parts[1]))
+                                    self.live_data['accel_z'].append(float(accel_parts[2]))
+                                
+                                # Parse gyro data
+                                gyro_parts = data[9].split(':')
+                                if len(gyro_parts) == 3:
+                                    self.live_data['gyro_x'].append(float(gyro_parts[0]))
+                                    self.live_data['gyro_y'].append(float(gyro_parts[1]))
+                                    self.live_data['gyro_z'].append(float(gyro_parts[2]))
+                        except (ValueError, IndexError):
+                            pass  # Skip malformed data
                         
                         ti = str(datetime.now()).split(" ")
                         comp_time = ti[-1]
