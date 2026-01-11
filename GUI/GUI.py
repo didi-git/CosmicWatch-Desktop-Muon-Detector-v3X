@@ -1719,16 +1719,14 @@ class FuturisticDashboard(QWidget):
                             hours = int(self.time_stamp // 3600)
                             minutes = int((self.time_stamp % 3600) // 60)
                             seconds = int(self.time_stamp % 60)
-                            self.overlay_label.setText(f"Detector Name: {self.detector_name}")
                             self.data_ready2.emit(
                                 f"Run Time: {hours:02}:{minutes:02}:{seconds:02.0f}\n\n"
                                 f"Total deadtime: {deadtime:02.3f}s\n\n"
                                 f"Total Livetime: {livetime:02.2f}s\n\n"
                                 f"Single Counts: {self.events}\n\n"
                                 f"Single Count Rate: {self.rate:02.2f}±{self.rate_error:02.3f}Hz\n\n"
-                                f"Coincedence Counts: {self.coincidence_counter}\n\n"
-                                f"Coincedence Rate: {self.coincidence_rate:02.2f}±{self.coincidence_rate_error:02.3f}Hz\n\n"
-                                
+                                f"Coincidence Counts: {self.coincidence_counter}\n\n"
+                                f"Coincidence Rate: {self.coincidence_rate:02.2f}±{self.coincidence_rate_error:02.3f}Hz\n\n"
 )
                             self.last_screen_update_time = time.time() 
                             
