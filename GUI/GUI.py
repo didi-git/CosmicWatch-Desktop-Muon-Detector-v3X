@@ -285,7 +285,7 @@ class CWClass():
             self.count_rate       = self.total_counts/self.live_time 
             self.count_rate_err   = np.sqrt(self.total_counts)/self.live_time 
 
-            bins = range(0,int(max(self.time_stamp_s)), self.bin_size)
+            bins = range(int(min(self.time_stamp_s)), int(max(self.time_stamp_s)), self.bin_size)
             counts, binEdges       = np.histogram(self.time_stamp_s, bins = bins)
             bin_livetime, binEdges = np.histogram(self.time_stamp_s, bins = bins, weights = self.PICO_event_livetime_s)
         
@@ -732,7 +732,7 @@ class FuturisticDashboard(QWidget):
 
         binning_layout = QHBoxLayout()
 
-        self.binning_label = QLabel("Binning Time Interval:")
+        self.binning_label = QLabel("Rate Time Interval:")
         self.binning_label.setStyleSheet("""
             font-family: 'Times New Roman', Times, serif;
             color: #eee;
@@ -1663,9 +1663,9 @@ class FuturisticDashboard(QWidget):
         data=[ f1.adc,f1.adc[~f1.select_coincident],f1.adc[f1.select_coincident]],
         weights=[f1.weights,f1.weights[~f1.select_coincident],f1.weights[f1.select_coincident]],
         colors=[mycolors[7], mycolors[3],mycolors[1]],
-        labels=[r'All Events:  ' + str(f1.count_rate) + '+/-' + str(f1.count_rate_err) +' Hz',
-                r'Non-Coincident:  ' + str(f1.count_rate_non_coincident) + '+/-' + str(f1.count_rate_err_non_coincident) +' Hz',
-                r'Coincident: ' + str(f1.count_rate_coincident) + '+/-' + str(f1.count_rate_err_coincident) +' Hz'],
+        labels=[r'All Events:  ' + f'{f1.count_rate:.5f}' + '+/-' + f'{f1.count_rate_err:.5f}' +' Hz',
+                r'Non-Coincident:  ' + f'{f1.count_rate_non_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_non_coincident:.5f}' +' Hz',
+                r'Coincident: ' + f'{f1.count_rate_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_coincident:.5f}' +' Hz'],
         ax = self.static_ax,
         xmin=min(f1.adc), xmax= max(f1.adc),  ymin=0.1e-3, ymax=1.1,nbins=101,
         xlabel='Measured 12-bit ADC peak value [0-4095]',
@@ -1843,9 +1843,9 @@ class FuturisticDashboard(QWidget):
         data=[f1.sipm, f1.sipm[~f1.select_coincident],f1.sipm[f1.select_coincident]],
         weights=[f1.weights, f1.weights[~f1.select_coincident],f1.weights[f1.select_coincident]],
         colors=[mycolors[7], mycolors[3],mycolors[1]],
-        labels=[r'All Events:  ' + str(f1.count_rate) + '+/-' + str(f1.count_rate_err) +' Hz',
-                r'Non-Coincident:  ' + str(f1.count_rate_non_coincident) + '+/-' + str(f1.count_rate_err_non_coincident) +' Hz',
-                r'Coincident: ' + str(f1.count_rate_coincident) + '+/-' + str(f1.count_rate_err_coincident) +' Hz'],
+        labels=[r'All Events:  ' + f'{f1.count_rate:.5f}' + '+/-' + f'{f1.count_rate_err:.5f}' +' Hz',
+                r'Non-Coincident:  ' + f'{f1.count_rate_non_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_non_coincident:.5f}' +' Hz',
+                r'Coincident: ' + f'{f1.count_rate_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_coincident:.5f}' +' Hz'],
         ax = self.static_ax,
         xmin=xmin, xmax=xmax, ymin=0.1e-3, ymax=1.1,xscale='log',
         xlabel='SiPM Peak Voltage [mV]',fit_gaussian=True,
@@ -1867,9 +1867,9 @@ class FuturisticDashboard(QWidget):
         count_rates = [f1.binned_count_rate,f1.binned_count_rate_non_coincident,f1.binned_count_rate_coincident],
         count_rates_err = [f1.binned_count_rate_err,f1.binned_count_rate_err_non_coincident,f1.binned_count_rate_err_coincident], 
         colors=[mycolors[7], mycolors[3], mycolors[1]],
-        labels=[r'All Events: ' + str(f1.count_rate) + '+/-' + str(f1.count_rate_err) +' Hz', 
-                r'Non-Coincident:  ' + str(f1.count_rate_non_coincident) + '+/-' + str(f1.count_rate_err_non_coincident) +' Hz',
-                r'Coincident:  ' + str(f1.count_rate_coincident) + '+/-' + str(f1.count_rate_err_coincident) +' Hz'],
+        labels=[r'All Events: ' + f'{f1.count_rate:.5f}' + '+/-' + f'{f1.count_rate_err:.5f}' +' Hz', 
+                r'Non-Coincident:  ' + f'{f1.count_rate_non_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_non_coincident:.5f}' +' Hz',
+                r'Coincident:  ' + f'{f1.count_rate_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_coincident:.5f}' +' Hz'],
         ax = self.static_ax,
         xmin = min(f1.binned_time_m) if len(f1.binned_time_m) > 0 else 0, 
         xmax = max(f1.binned_time_m) if len(f1.binned_time_m) > 0 else 1,
@@ -1877,10 +1877,18 @@ class FuturisticDashboard(QWidget):
         ymax = 1.3*max(f1.binned_count_rate) if len(f1.binned_count_rate) > 0 else 1,
         figsize = [7,5],
         fontsize = 16,alpha = 1,
-        xscale = 'linear',yscale = 'linear',xlabel = 'Time since boot [min]',ylabel = r'Rate [s$^{-1}$]',
+        xscale = 'linear',yscale = 'linear',xlabel = 'Time since first event [min]',ylabel = r'Rate [s$^{-1}$]',
         loc = 1, pdf_name='_rate.pdf',title = 'Detector Count Rate')
         #print(f1.binned_count_rate_err_non_coincident)
         self.static_canvas.draw()
+        
+        # Add bin size annotation in upper left corner
+        bin_size = getattr(self, 'selected_bin_time', 30)
+        self.static_ax.text(0.01, 0.98, f'Time interval: {bin_size}s', 
+                           transform=self.static_ax.transAxes,
+                           fontsize=12, verticalalignment='top',
+                           bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
         self.apply_theme()
 
     def stop_file(self):
