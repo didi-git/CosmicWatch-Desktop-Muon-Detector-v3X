@@ -1686,10 +1686,13 @@ class FuturisticDashboard(QWidget):
         span = y_max - y_min
         padding = 0.1 * span   # 5% of the span
 
+        # BMP280 temperature sensor relative accuracy: ±0.1°C (typical)
+        # Reference: BMP280 Datasheet, Table 3 (Typical Performance)
+        temperature_uncertainty = 0.1  # °C
 
         c = self.ratePlot(time = [f1.binned_time_m,],
         count_rates = [f1.binned_temperature],
-        count_rates_err = [np.ones(len(f1.binned_temperature))*0.1], # Uncertainty on pressure is 0.1C
+        count_rates_err = [np.ones(len(f1.binned_temperature)) * temperature_uncertainty],
         colors =[mycolors[5]],
         ax = self.static_ax,
         xmin = min(f1.binned_time_m),xmax = max(f1.binned_time_m),ymin = y_min - padding,ymax = y_max + padding,
@@ -1697,6 +1700,13 @@ class FuturisticDashboard(QWidget):
         fontsize = 16,alpha = 1,labels=['Temperature Data'],
         xscale = 'linear',yscale = 'linear',xlabel = 'Time [min]',ylabel = r'Temperature [$^{\circ}$C]',
         loc = 4,pdf_name='_temperature.pdf',title = 'Temperature Measurement')
+        
+        # Add error bar annotation
+        self.static_ax.text(0.98, 0.02, f'Error bars: ±{temperature_uncertainty}°C', 
+                           transform=self.static_ax.transAxes,
+                           fontsize=10, horizontalalignment='right', verticalalignment='bottom',
+                           bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
         self.apply_theme()
     
     def run_gyro(self):
@@ -1722,13 +1732,17 @@ class FuturisticDashboard(QWidget):
         ymin = y_min - padding
         ymax = y_max + padding
 
+        # MPU6050 gyroscope typical noise: ±0.1 deg/s (at ±250 deg/s scale)
+        # Reference: MPU6050 Datasheet, Section 6.2 (Gyroscope Specifications)
+        gyro_uncertainty = 0.1  # deg/s
+
         c = self.ratePlot(
             time=[f1.binned_time_m, f1.binned_time_m, f1.binned_time_m],
             count_rates=[f1.binned_gyro_x, f1.binned_gyro_y, f1.binned_gyro_z],
             count_rates_err=[
-                np.ones(len(f1.binned_gyro_x)) * 1,
-                np.ones(len(f1.binned_gyro_y)) * 1,
-                np.ones(len(f1.binned_gyro_z)) * 1,
+                np.ones(len(f1.binned_gyro_x)) * gyro_uncertainty,
+                np.ones(len(f1.binned_gyro_y)) * gyro_uncertainty,
+                np.ones(len(f1.binned_gyro_z)) * gyro_uncertainty,
             ],
             colors=[mycolors[2], mycolors[3], mycolors[4]],
             labels=[r'Angular velocity X', r'Angular velocity Y', r'Angular velocity Z'],
@@ -1745,6 +1759,13 @@ class FuturisticDashboard(QWidget):
             xlabel='Time [min]',
             ylabel=r'Angular velocity [deg/s]',  # ← your original 'ylabel' string was cut off
         )
+        
+        # Add error bar annotation
+        self.static_ax.text(0.98, 0.02, f'Error bars: ±{gyro_uncertainty} deg/s', 
+                           transform=self.static_ax.transAxes,
+                           fontsize=10, horizontalalignment='right', verticalalignment='bottom',
+                           bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
         self.apply_theme()
     
 
@@ -1770,15 +1791,17 @@ class FuturisticDashboard(QWidget):
         ymin = y_min - padding
         ymax = y_max + padding
         
-        #ymin = np.min(all_y) - 0.3
-        #ymax = np.max(all_y) + 0.3
+        # MPU6050 accelerometer typical noise: ±1 mg (0.001 g)
+        # Reference: MPU6050 Datasheet, Section 6.1 (Accelerometer Specifications)
+        accel_uncertainty = 0.001  # g (1 mg)
+        
         c = self.ratePlot(
             time=[f1.binned_time_m, f1.binned_time_m, f1.binned_time_m],
             count_rates=[f1.binned_accel_x, f1.binned_accel_y, f1.binned_accel_z],
             count_rates_err=[
-                np.ones(len(f1.binned_accel_x)) * 0.1,
-                np.ones(len(f1.binned_accel_y)) * 0.1,
-                np.ones(len(f1.binned_accel_z)) * 0.1,
+                np.ones(len(f1.binned_accel_x)) * accel_uncertainty,
+                np.ones(len(f1.binned_accel_y)) * accel_uncertainty,
+                np.ones(len(f1.binned_accel_z)) * accel_uncertainty,
             ],
             colors=[mycolors[2], mycolors[3], mycolors[4]],
             labels=[r'Acceleration X', r'Acceleration Y', r'Acceleration Z'],
@@ -1795,6 +1818,13 @@ class FuturisticDashboard(QWidget):
             xlabel='Time [min]',
             ylabel=r'Acceleration [g]',  # ← your original 'ylabel' string was cut off
         )
+        
+        # Add error bar annotation
+        self.static_ax.text(0.98, 0.02, f'Error bars: ±{accel_uncertainty*1000:.1f} mg', 
+                           transform=self.static_ax.transAxes,
+                           fontsize=10, horizontalalignment='right', verticalalignment='bottom',
+                           bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
         self.apply_theme()
     
     def run_pressure(self):
@@ -1812,9 +1842,13 @@ class FuturisticDashboard(QWidget):
         #padding = 0.05 * span   # 5% of the span
         padding = max(0.05 * span, 1000)   # 5% of span OR 1000
 
+        # BMP280 pressure sensor absolute accuracy: ±100 Pa (±1 hPa)
+        # Reference: BMP280 Datasheet, Table 3 (Typical Performance)
+        pressure_uncertainty = 100  # Pa
+        
         c = self.ratePlot(time = [f1.binned_time_m,],
         count_rates = [f1.binned_pressure],
-        count_rates_err = [np.ones(len(f1.binned_pressure)) * 500], # Uncertainty on pressure is 100 Pa
+        count_rates_err = [np.ones(len(f1.binned_pressure)) * pressure_uncertainty],
         colors =[mycolors[6]],
         xmin = min(f1.binned_time_m),xmax = max(f1.binned_time_m),ymin =y_min - padding,ymax =y_max + padding,
         figsize = [7,5],labels=['Pressure Data'],
@@ -1822,6 +1856,13 @@ class FuturisticDashboard(QWidget):
         ax = self.static_ax,
         xscale = 'linear',yscale = 'linear',xlabel = 'Time [min]',ylabel = r'Pressure [Pa]',
         loc = 4,pdf_name='_pressure.pdf',title = 'Pressure Measurement')
+        
+        # Add error bar annotation
+        self.static_ax.text(0.98, 0.02, f'Error bars: ±{pressure_uncertainty} Pa', 
+                           transform=self.static_ax.transAxes,
+                           fontsize=10, horizontalalignment='right', verticalalignment='bottom',
+                           bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
         self.apply_theme()
 
     def run_voltage(self):
