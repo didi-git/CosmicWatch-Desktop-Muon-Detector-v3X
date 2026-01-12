@@ -6,7 +6,7 @@ from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as Navigation
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QPushButton, QLabel, QVBoxLayout,
     QHBoxLayout, QGridLayout, QTextEdit,
-    QFileDialog, QComboBox, QRadioButton, QToolButton
+    QFileDialog, QComboBox, QRadioButton, QToolButton, QLineEdit
 )
 from PyQt6.QtCore import (
     Qt, QSize, pyqtSignal
@@ -718,74 +718,55 @@ class FuturisticDashboard(QWidget):
         """)
                 
 
-        #bin time buttons
-        radio_style = """
-            QRadioButton {
-                color: #eee;
-                background-color: #122c3d;
-                border-radius: 4px;
-                padding: 4px;
-            }
-            QRadioButton::indicator {
-                width: 16px;
-                height: 16px;
-            }
-            QRadioButton::indicator::checked {
-                background-color: #00ffcc;
-                border: 1px solid white;
-                border-radius: 8px;
-            }
-        """
-
+        #bin time input
         binning_layout = QHBoxLayout()
 
         self.binning_label = QLabel("Rate Time Interval:")
         self.binning_label.setStyleSheet("""
             font-family: 'Times New Roman', Times, serif;
             color: #eee;
-            padding-right: 1px;
+            padding-right: 5px;
             font-size: 18px;
             font-weight: bold;
         """)
         binning_layout.addWidget(self.binning_label)
         
-
-        self.bin_button_30 = QRadioButton("30s")
-        self.bin_button_60 = QRadioButton("60s")
-        self.bin_button_120 = QRadioButton("120s")
-        self.bin_button_180 = QRadioButton("180s")
-        self.bin_240s_btn = QRadioButton("240s")
-        self.bin_600s_btn = QRadioButton("600s")
-        
-        self.bin_button_30.setChecked(True)
+        # Set default bin time
         self.selected_bin_time = 30
         self.binning_selected = True
-
-        binning_layout.addWidget(self.bin_button_30)
-        binning_layout.addWidget(self.bin_button_60)
-        binning_layout.addWidget(self.bin_button_120)
-        binning_layout.addWidget(self.bin_button_180)
-        binning_layout.addWidget(self.bin_240s_btn)
-        binning_layout.addWidget(self.bin_600s_btn)
-        self.bin_button_30.clicked.connect(self.select_bin_30)
-        self.bin_button_60.clicked.connect(self.select_bin_60)
-        self.bin_button_120.clicked.connect(self.select_bin_120)
-        self.bin_button_180.clicked.connect(self.select_bin_180)
-        self.bin_240s_btn.clicked.connect(self.select_bin_240)
-        self.bin_600s_btn.clicked.connect(self.select_bin_600)
+        
+        # Add custom bin time input
+        self.custom_bin_input = QLineEdit()
+        self.custom_bin_input.setText("30")  # Set default value
+        self.custom_bin_input.setFixedWidth(80)
+        self.custom_bin_input.setStyleSheet("""
+            QLineEdit {
+                background-color: #122c3d;
+                color: #eee;
+                border: 1px solid white;
+                border-radius: 4px;
+                padding: 4px;
+                min-height: 20px;
+            }
+            QLineEdit:focus {
+                border: 2px solid #00ffcc;
+            }
+        """)
+        self.custom_bin_input.returnPressed.connect(self.select_custom_bin)
+        binning_layout.addWidget(self.custom_bin_input)
+        
+        custom_unit_label = QLabel("s")
+        custom_unit_label.setStyleSheet("""
+            color: #eee;
+            font-size: 14px;
+            padding-left: 3px;
+        """)
+        binning_layout.addWidget(custom_unit_label)
+        
+        # Add stretch to push everything to the left
+        binning_layout.addStretch()
+        
         left_panel.addLayout(binning_layout)
-
-
-
-
-
-
-
-
-
-
-
-
 
         # graph
         self.static_canvas = FigureCanvas(Figure(figsize=(4, 3)))
@@ -880,7 +861,10 @@ class FuturisticDashboard(QWidget):
         self.gyro_btn.clicked.connect(self.run_gyro)
         scan_btns.addWidget(self.gyro_btn)
 
-
+        # Count Distribution button
+        self.count_dist_btn = QPushButton("Count Distribution")
+        self.count_dist_btn.clicked.connect(self.run_count_distribution)
+        scan_btns.addWidget(self.count_dist_btn)
 
         # Add to layout
         left_panel.addLayout(scan_btns)
@@ -1223,7 +1207,7 @@ class FuturisticDashboard(QWidget):
         """
 
         for btn in [self.rate_btn, self.deadtime_btn, self.adc_btn, self.pressure_btn,
-            self.temperature_btn, self.acc_btn, self.gyro_btn, self.SiPM_btn]:
+            self.temperature_btn, self.acc_btn, self.gyro_btn, self.SiPM_btn, self.count_dist_btn]:
             btn.setStyleSheet(button_style)
 
         # Apply to all bottom buttons
@@ -1237,6 +1221,21 @@ class FuturisticDashboard(QWidget):
             padding-right: 10px;
             font-size: 18px;
             font-weight: bold;
+        """)
+        
+        # Custom bin input styling
+        self.custom_bin_input.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {t['button_background']};
+                color: {t['fg']};
+                border: 1px solid {t['button_border']};
+                border-radius: 4px;
+                padding: 4px;
+                min-height: 20px;
+            }}
+            QLineEdit:focus {{
+                border: 2px solid {t['accent']};
+            }}
         """)
         
         # update coord_label
@@ -1319,43 +1318,9 @@ class FuturisticDashboard(QWidget):
         else:
             self.feed_box.append("No data loaded yet. Load a file first.")
             
-    def select_bin_30(self):
-        self.binning_selected = True
-        self.selected_bin_time = 30
-        self.feed_box.append("Selected bin time: 30")
-        self.recalc_cw()
-        
-        
     def toggle_theme(self):
         self.current_theme = "light" if self.current_theme == "dark" else "dark"
         self.apply_theme()
-        
-        
-    def select_bin_30(self):
-        self.binning_selected = True
-        self.selected_bin_time = 30
-        self.feed_box.append("Selected bin time: 30")
-        self.recalc_cw()
-        
-        
-
-    def select_bin_60(self):
-        self.binning_selected = True
-        self.selected_bin_time = 60
-        self.feed_box.append("Selected bin time: 60")
-        self.recalc_cw()
-
-    def select_bin_120(self):
-        self.selected_bin_time = 120
-        self.binning_selected = True
-        self.feed_box.append("Selected bin time: 120")
-        self.recalc_cw()
-
-    def select_bin_180(self):
-        self.selected_bin_time = 180
-        self.binning_selected = True
-        self.feed_box.append("Selected bin time: 180")
-        self.recalc_cw()
 
     def load_file(self):
         if self.binning_selected == False: 
@@ -1392,17 +1357,26 @@ class FuturisticDashboard(QWidget):
                 # ✅ Automatically plot the rate plot after import
                 #self.run_rate()
 
-    def select_bin_240(self):
-        self.binning_selected = True
-        self.selected_bin_time = 240
-        self.feed_box.append("Selected bin time: 240")
-        self.recalc_cw()
-
-    def select_bin_600(self):
-        self.binning_selected = True
-        self.selected_bin_time = 600
-        self.feed_box.append("Selected bin time: 600")
-        self.recalc_cw()
+    def select_custom_bin(self):
+        """Handle custom bin time input."""
+        text = self.custom_bin_input.text().strip()
+        if not text:
+            return
+        
+        try:
+            custom_value = int(text)
+            if custom_value <= 0:
+                self.feed_box.append("Error: Bin time must be a positive integer.")
+                return
+            
+            # Set custom bin time
+            self.binning_selected = True
+            self.selected_bin_time = custom_value
+            self.feed_box.append(f"Selected bin time: {custom_value}s")
+            self.recalc_cw()
+            
+        except ValueError:
+            self.feed_box.append("Error: Please enter a valid integer for bin time.")
     
     class NPlot():
         def __init__(self, 
@@ -1992,6 +1966,138 @@ class FuturisticDashboard(QWidget):
                            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
         
         self.apply_theme()
+
+    def run_count_distribution(self):
+        """Plot the distribution of event counts per time interval with Poisson overlay."""
+        from scipy.stats import poisson
+        
+        self.toolbar.plot_type = "count_distribution"
+        # Use live data if recording, otherwise use loaded file data
+        f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
+        
+        if f1 is None:
+            self.feed_box.append("No data loaded. Please load a file first.")
+            return
+        
+        # Get the bin size
+        bin_size = getattr(self, 'selected_bin_time', 30)
+        
+        # Calculate histogram of counts per bin for each event type
+        bins = range(int(np.min(f1.PICO_timestamp_s)), int(np.max(f1.PICO_timestamp_s)), bin_size)
+        
+        # All events
+        counts_all, _ = np.histogram(f1.PICO_timestamp_s, bins=bins)
+        lambda_all = np.mean(counts_all)
+        
+        # Non-coincident events
+        counts_non_coin, _ = np.histogram(f1.PICO_timestamp_s[~f1.select_coincident], bins=bins)
+        lambda_non_coin = np.mean(counts_non_coin)
+        
+        # Coincident events
+        counts_coin, _ = np.histogram(f1.PICO_timestamp_s[f1.select_coincident], bins=bins)
+        lambda_coin = np.mean(counts_coin)
+        
+        # Determine the maximum count across all types
+        max_count = int(max(np.max(counts_all), np.max(counts_non_coin), np.max(counts_coin)))
+        count_bins = np.arange(0, max_count + 2) - 0.5  # Bin edges
+        
+        # Get observed distributions
+        total_intervals = len(counts_all)
+        
+        obs_all, _ = np.histogram(counts_all, bins=count_bins)
+        freq_all = obs_all / total_intervals
+        
+        obs_non_coin, _ = np.histogram(counts_non_coin, bins=count_bins)
+        freq_non_coin = obs_non_coin / total_intervals
+        
+        obs_coin, _ = np.histogram(counts_coin, bins=count_bins)
+        freq_coin = obs_coin / total_intervals
+        
+        # Generate Poisson distributions
+        x_poisson = np.arange(0, max_count + 1)
+        y_poisson_all = poisson.pmf(x_poisson, lambda_all)
+        y_poisson_non_coin = poisson.pmf(x_poisson, lambda_non_coin)
+        y_poisson_coin = poisson.pmf(x_poisson, lambda_coin)
+        
+        # Clear the plot
+        self.static_ax.clear()
+        
+        # Bar width for grouped bars
+        bar_width = 0.25
+        x_positions = x_poisson
+        
+        # Plot observed distributions as grouped bars with colors matching other plots
+        # All events: mycolors[7] (cyan/teal)
+        self.static_ax.bar(x_positions - bar_width, freq_all, width=bar_width, alpha=0.7, 
+                          color=mycolors[7], label='All Events (Obs)', edgecolor='white')
+        
+        # Non-coincident: mycolors[3] (orange)
+        self.static_ax.bar(x_positions, freq_non_coin, width=bar_width, alpha=0.7, 
+                          color=mycolors[3], label='Non-Coincident (Obs)', edgecolor='white')
+        
+        # Coincident: mycolors[1] (red)
+        self.static_ax.bar(x_positions + bar_width, freq_coin, width=bar_width, alpha=0.7, 
+                          color=mycolors[1], label='Coincident (Obs)', edgecolor='white')
+        
+        # Overlay Poisson distributions as lines
+        self.static_ax.plot(x_poisson, y_poisson_all, color=mycolors[7], linestyle='--', 
+                           linewidth=2, marker='o', markersize=4, 
+                           label=f'All Poisson (λ={lambda_all:.2f})')
+        
+        self.static_ax.plot(x_poisson, y_poisson_non_coin, color=mycolors[3], linestyle='--', 
+                           linewidth=2, marker='s', markersize=4,
+                           label=f'Non-Coin Poisson (λ={lambda_non_coin:.2f})')
+        
+        self.static_ax.plot(x_poisson, y_poisson_coin, color=mycolors[1], linestyle='--', 
+                           linewidth=2, marker='^', markersize=4,
+                           label=f'Coincident Poisson (λ={lambda_coin:.2f})')
+        
+        # Set labels and title
+        self.static_ax.set_xlabel(f'Number of Events per {bin_size}s Interval', fontsize=15)
+        self.static_ax.set_ylabel('Probability', fontsize=15)
+        self.static_ax.set_title('Event Count Distribution vs Poisson', fontsize=16, color='white')
+        
+        # Set x-axis to show reasonable number of integer ticks
+        # Determine tick spacing to avoid overlap
+        if max_count <= 10:
+            tick_spacing = 1
+        elif max_count <= 20:
+            tick_spacing = 2
+        elif max_count <= 50:
+            tick_spacing = 5
+        else:
+            tick_spacing = 10
+        
+        x_ticks = np.arange(0, max_count + 1, tick_spacing)
+        self.static_ax.set_xticks(x_ticks)
+        
+        # Add legend
+        self.static_ax.legend(fontsize=10, loc='upper right', fancybox=False, frameon=False, ncol=2)
+        
+        # Add statistics annotation on the right side
+        stats_text = (f'All: μ={lambda_all:.2f}, σ={np.std(counts_all):.2f}\n'
+                     f'Non-Coin: μ={lambda_non_coin:.2f}, σ={np.std(counts_non_coin):.2f}\n'
+                     f'Coincident: μ={lambda_coin:.2f}, σ={np.std(counts_coin):.2f}\n'
+                     f'Intervals: {total_intervals}')
+        self.static_ax.text(0.98, 0.65, stats_text,
+                           transform=self.static_ax.transAxes,
+                           fontsize=9, verticalalignment='top', horizontalalignment='right',
+                           bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
+        # Add bin size annotation in upper left
+        self.static_ax.text(0.02, 0.98, f'Time interval: {bin_size}s', 
+                           transform=self.static_ax.transAxes,
+                           fontsize=12, verticalalignment='top',
+                           bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.5))
+        
+        # Adjust layout to prevent title and labels from being cut off
+        self.static_canvas.figure.tight_layout()
+        
+        self.static_canvas.draw()
+        self.apply_theme()
+        
+        self.feed_box.append(f"Count distribution plotted. Mean counts per {bin_size}s: "
+                           f"All={lambda_all:.2f}, Non-Coin={lambda_non_coin:.2f}, Coin={lambda_coin:.2f}")
 
     def stop_file(self):
         # First, signal the thread to stop
