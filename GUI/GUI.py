@@ -358,6 +358,10 @@ class CWClass():
             # Calculate non-coincident rate statistics
             self.count_rate_non_coincident = self.total_non_coincident / self.live_time
             self.count_rate_err_non_coincident = np.sqrt(self.total_non_coincident) / self.live_time
+            
+            # Calculate binned deadtime percentage
+            bin_deadtime, _ = np.histogram(self.time_stamp_s, bins=bins, weights=self.event_deadtime_s)
+            self.binned_deadtime_percentage = bin_deadtime / self.bin_size * 100
         
         elif file_from_sdcard:
             self.live_time_s        = (self.PICO_total_time_s - self.total_deadtime_s)
@@ -425,6 +429,9 @@ class CWClass():
             self.count_rate_non_coincident, self.count_rate_err_non_coincident = round(
                     self.total_non_coincident/self.live_time_s, 
                     np.sqrt(self.total_non_coincident)/self.live_time_s)
+
+            # Calculate binned deadtime percentage
+            self.binned_deadtime_percentage = bin_deadtime / self.bin_size * 100
 
             sum_pressure, _ = np.histogram(self.PICO_timestamp_s, bins=bins, weights=self.pressure)
             count_pressure, _ = np.histogram(self.PICO_timestamp_s, bins=bins)
@@ -829,22 +836,20 @@ class FuturisticDashboard(QWidget):
         #Bottom buttons
         scan_btns = QHBoxLayout()
 
-        # Temperature button
+        # Rate button
         self.rate_btn = QPushButton("Rate")
         self.rate_btn.clicked.connect(self.run_rate)
         scan_btns.addWidget(self.rate_btn)
 
-        #rate_btn = QPushButton("Rate")
-        #rate_btn.setStyleSheet("background-color: #142d4c; color: #eee;")
-        #rate_btn.clicked.connect(self.run_rate)
-        #scan_btns.addWidget(rate_btn)
+        # Deadtime button
+        self.deadtime_btn = QPushButton("Deadtime")
+        self.deadtime_btn.clicked.connect(self.run_deadtime)
+        scan_btns.addWidget(self.deadtime_btn)
 
         # ADC button
         self.adc_btn = QPushButton("ADC")
-        #self.adc_btn.setStyleSheet("background-color: #142d4c; color: #eee;")
         self.adc_btn.clicked.connect(self.run_adc)
         scan_btns.addWidget(self.adc_btn)
-        #scan_btns.addWidget(rate_btn)
 
         # Pressure button
         self.SiPM_btn = QPushButton("SiPM")
@@ -872,7 +877,6 @@ class FuturisticDashboard(QWidget):
         scan_btns.addWidget(self.acc_btn)
 
         self.gyro_btn = QPushButton("Angular velocity")
-        #gyro_btn.setStyleSheet("background-color: #142d4c; color: #eee;")
         self.gyro_btn.clicked.connect(self.run_gyro)
         scan_btns.addWidget(self.gyro_btn)
 
@@ -1218,7 +1222,7 @@ class FuturisticDashboard(QWidget):
             }}
         """
 
-        for btn in [self.rate_btn, self.adc_btn, self.pressure_btn,
+        for btn in [self.rate_btn, self.deadtime_btn, self.adc_btn, self.pressure_btn,
             self.temperature_btn, self.acc_btn, self.gyro_btn, self.SiPM_btn]:
             btn.setStyleSheet(button_style)
 
@@ -1628,6 +1632,10 @@ class FuturisticDashboard(QWidget):
         count_gyro_z, _ = np.histogram(cw.PICO_timestamp_s, bins=bins)
         cw.binned_gyro_z = sum_gyro_z / np.maximum(count_gyro_z, 1)
         
+        # Calculate binned deadtime percentage
+        bin_deadtime, _ = np.histogram(cw.PICO_timestamp_s, bins=bins, weights=event_deadtime_s)
+        cw.binned_deadtime_percentage = bin_deadtime / bin_size * 100
+        
         bincenters = 0.5 * (binEdges[1:] + binEdges[:-1])
         cw.binned_time_s = bincenters
         cw.binned_time_m = bincenters / 60.
@@ -1924,6 +1932,59 @@ class FuturisticDashboard(QWidget):
         self.static_canvas.draw()
         
         # Add bin size annotation in upper left corner
+        bin_size = getattr(self, 'selected_bin_time', 30)
+        self.static_ax.text(0.01, 0.98, f'Time interval: {bin_size}s', 
+                           transform=self.static_ax.transAxes,
+                           fontsize=12, verticalalignment='top',
+                           bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
+        self.apply_theme()
+
+    def run_deadtime(self):
+        self.toolbar.plot_type = "deadtime"
+        # Use live data if recording, otherwise use loaded file data
+        f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
+        
+        if f1 is None:
+            self.feed_box.append("No data available. Load a file or start recording.")
+            return
+        
+        # Check if binned_deadtime_percentage exists
+        if not hasattr(f1, 'binned_deadtime_percentage'):
+            self.feed_box.append("Deadtime data not available for this dataset.")
+            return
+            
+        y_min = np.min(f1.binned_deadtime_percentage)
+        y_max = np.max(f1.binned_deadtime_percentage)
+        
+        # Use log scale, so set reasonable bounds
+        ymin = max(0.01, y_min * 0.5)  # Don't go below 0.01% for log scale
+        ymax = y_max * 2.0
+        
+        c = self.ratePlot(
+            time=[f1.binned_time_m],
+            count_rates=[f1.binned_deadtime_percentage],
+            count_rates_err=[np.zeros(len(f1.binned_time_m))],  # No error bars for deadtime
+            colors=[mycolors[6]],
+            xmin=min(f1.binned_time_m),
+            xmax=max(f1.binned_time_m),
+            ymin=ymin,
+            ymax=ymax,
+            figsize=[7, 5],
+            labels=['Deadtime Percentage'],
+            fontsize=16,
+            alpha=1,
+            ax=self.static_ax,
+            xscale='linear',
+            yscale='linear',
+            xlabel='Time [min]',
+            ylabel=r'Deadtime Percentage [%]',
+            loc=2,
+            pdf_name='_deadtime.pdf',
+            title='Deadtime Measurement'
+        )
+        
+        # Add bin size annotation
         bin_size = getattr(self, 'selected_bin_time', 30)
         self.static_ax.text(0.01, 0.98, f'Time interval: {bin_size}s', 
                            transform=self.static_ax.transAxes,
