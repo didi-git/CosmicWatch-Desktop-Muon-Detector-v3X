@@ -866,6 +866,11 @@ class FuturisticDashboard(QWidget):
         self.count_dist_btn.clicked.connect(self.run_count_distribution)
         scan_btns.addWidget(self.count_dist_btn)
 
+        # Inter-Event Time Distribution button
+        self.inter_event_btn = QPushButton("Inter-Event Time")
+        self.inter_event_btn.clicked.connect(self.run_inter_event_time)
+        scan_btns.addWidget(self.inter_event_btn)
+
         # Add to layout
         left_panel.addLayout(scan_btns)
         main_layout.addLayout(left_panel, 0, 0)
@@ -1207,7 +1212,7 @@ class FuturisticDashboard(QWidget):
         """
 
         for btn in [self.rate_btn, self.deadtime_btn, self.adc_btn, self.pressure_btn,
-            self.temperature_btn, self.acc_btn, self.gyro_btn, self.SiPM_btn, self.count_dist_btn]:
+            self.temperature_btn, self.acc_btn, self.gyro_btn, self.SiPM_btn, self.count_dist_btn, self.inter_event_btn]:
             btn.setStyleSheet(button_style)
 
         # Apply to all bottom buttons
@@ -2098,6 +2103,147 @@ class FuturisticDashboard(QWidget):
         
         self.feed_box.append(f"Count distribution plotted. Mean counts per {bin_size}s: "
                            f"All={lambda_all:.2f}, Non-Coin={lambda_non_coin:.2f}, Coin={lambda_coin:.2f}")
+
+    def run_inter_event_time(self):
+        """Plot the distribution of time intervals between consecutive events with exponential overlay."""
+        from scipy.stats import expon
+        
+        self.toolbar.plot_type = "inter_event_time"
+        # Use live data if recording, otherwise use loaded file data
+        f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
+        
+        if f1 is None:
+            self.feed_box.append("No data loaded. Please load a file or start recording first.")
+            return
+        
+        # Calculate inter-event times for each event type
+        # All events
+        timestamps_all = f1.PICO_timestamp_s
+        if len(timestamps_all) < 2:
+            self.feed_box.append("Not enough events to calculate inter-event times.")
+            return
+        
+        inter_times_all = np.diff(timestamps_all)
+        mean_all = np.mean(inter_times_all)
+        
+        # Non-coincident events
+        timestamps_non_coin = f1.PICO_timestamp_s[~f1.select_coincident]
+        if len(timestamps_non_coin) >= 2:
+            inter_times_non_coin = np.diff(timestamps_non_coin)
+            mean_non_coin = np.mean(inter_times_non_coin)
+        else:
+            inter_times_non_coin = np.array([])
+            mean_non_coin = 0
+        
+        # Coincident events
+        timestamps_coin = f1.PICO_timestamp_s[f1.select_coincident]
+        if len(timestamps_coin) >= 2:
+            inter_times_coin = np.diff(timestamps_coin)
+            mean_coin = np.mean(inter_times_coin)
+        else:
+            inter_times_coin = np.array([])
+            mean_coin = 0
+        
+        # Determine histogram bins (use log spacing for better visualization)
+        # Find reasonable range for all data
+        all_times = np.concatenate([inter_times_all, 
+                                    inter_times_non_coin if len(inter_times_non_coin) > 0 else [],
+                                    inter_times_coin if len(inter_times_coin) > 0 else []])
+        
+        min_time = np.min(all_times)
+        max_time = np.max(all_times)
+        
+        # Create logarithmically spaced bins
+        n_bins = 50
+        bins = np.logspace(np.log10(max(min_time, 1e-6)), np.log10(max_time * 1.2), n_bins)
+        
+        # Calculate histograms (normalized to probability density)
+        hist_all, bin_edges_all = np.histogram(inter_times_all, bins=bins, density=True)
+        hist_non_coin, bin_edges_non_coin = np.histogram(inter_times_non_coin, bins=bins, density=True) if len(inter_times_non_coin) > 0 else (np.array([]), bins)
+        hist_coin, bin_edges_coin = np.histogram(inter_times_coin, bins=bins, density=True) if len(inter_times_coin) > 0 else (np.array([]), bins)
+        
+        # Calculate bin centers for plotting
+        bin_centers = (bin_edges_all[:-1] + bin_edges_all[1:]) / 2
+        
+        # Generate exponential distributions
+        x_exp = np.logspace(np.log10(max(min_time, 1e-6)), np.log10(max_time * 1.2), 200)
+        
+        # Exponential PDF: f(x) = (1/mean) * exp(-x/mean)
+        y_exp_all = expon.pdf(x_exp, scale=mean_all)
+        y_exp_non_coin = expon.pdf(x_exp, scale=mean_non_coin) if mean_non_coin > 0 else np.zeros_like(x_exp)
+        y_exp_coin = expon.pdf(x_exp, scale=mean_coin) if mean_coin > 0 else np.zeros_like(x_exp)
+        
+        # Clear the plot
+        self.static_ax.clear()
+        
+        # Plot histograms as step functions with colors matching other plots
+        # All events: mycolors[7] (cyan/teal)
+        self.static_ax.step(bin_centers, hist_all, where='mid', alpha=0.7, 
+                           color=mycolors[7], linewidth=2, label='All Events (Obs)')
+        
+        # Non-coincident: mycolors[3] (orange)
+        if len(inter_times_non_coin) > 0:
+            self.static_ax.step(bin_centers, hist_non_coin, where='mid', alpha=0.7, 
+                               color=mycolors[3], linewidth=2, label='Non-Coincident (Obs)')
+        
+        # Coincident: mycolors[1] (red)
+        if len(inter_times_coin) > 0:
+            self.static_ax.step(bin_centers, hist_coin, where='mid', alpha=0.7, 
+                               color=mycolors[1], linewidth=2, label='Coincident (Obs)')
+        
+        # Overlay exponential distributions as smooth curves
+        self.static_ax.plot(x_exp, y_exp_all, color=mycolors[7], linestyle='--', 
+                           linewidth=2, label=f'All Exp (μ={mean_all:.4f}s)')
+        
+        if mean_non_coin > 0:
+            self.static_ax.plot(x_exp, y_exp_non_coin, color=mycolors[3], linestyle='--', 
+                               linewidth=2, label=f'Non-Coin Exp (μ={mean_non_coin:.4f}s)')
+        
+        if mean_coin > 0:
+            self.static_ax.plot(x_exp, y_exp_coin, color=mycolors[1], linestyle='--', 
+                               linewidth=2, label=f'Coincident Exp (μ={mean_coin:.4f}s)')
+        
+        # Set log scale for both axes
+        #self.static_ax.set_xscale('log')
+        self.static_ax.set_xscale('linear')
+        self.static_ax.set_yscale('log')
+        #self.static_ax.set_yscale('linear')
+        
+        # Set fixed y-axis limits
+        self.static_ax.set_ylim(1e-10, 1e0)
+        
+        # Set x-axis to start at 0 and extend to max time
+        self.static_ax.set_xlim(0, max_time * 1.05)
+        
+        # Set labels and title
+        self.static_ax.set_xlabel('Inter-Event Time [s]', fontsize=15)
+        self.static_ax.set_ylabel('Probability Density [1/s]', fontsize=15)
+        self.static_ax.set_title('Inter-Event Time Distribution vs Exponential', fontsize=16, color='white')
+        
+        # Add legend
+        self.static_ax.legend(fontsize=10, loc='upper right', fancybox=False, frameon=False, ncol=2)
+        
+        # Add statistics annotation
+        stats_text = (f'All: μ={mean_all:.4f}s (Rate={1/mean_all:.2f} Hz)\n')
+        if mean_non_coin > 0:
+            stats_text += f'Non-Coin: μ={mean_non_coin:.4f}s (Rate={1/mean_non_coin:.2f} Hz)\n'
+        if mean_coin > 0:
+            stats_text += f'Coincident: μ={mean_coin:.4f}s (Rate={1/mean_coin:.2f} Hz)\n'
+        stats_text += f'Events: All={len(inter_times_all)}, Non-Coin={len(inter_times_non_coin)}, Coin={len(inter_times_coin)}'
+        
+        self.static_ax.text(0.98, 0.02, stats_text,
+                           transform=self.static_ax.transAxes,
+                           fontsize=9, verticalalignment='bottom', horizontalalignment='right',
+                           bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
+        # Adjust layout to prevent title and labels from being cut off
+        self.static_canvas.figure.tight_layout()
+        
+        self.static_canvas.draw()
+        self.apply_theme()
+        
+        self.feed_box.append(f"Inter-event time distribution plotted. Mean times: "
+                           f"All={mean_all:.4f}s, Non-Coin={mean_non_coin:.4f}s, Coin={mean_coin:.4f}s")
 
     def stop_file(self):
         # First, signal the thread to stop
