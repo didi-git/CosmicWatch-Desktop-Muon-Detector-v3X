@@ -903,11 +903,6 @@ class FuturisticDashboard(QWidget):
         self.rate_btn.clicked.connect(self.run_rate)
         scan_btns.addWidget(self.rate_btn)
 
-        # Rate Model button
-        self.rate_model_btn = QPushButton("Rate Model")
-        self.rate_model_btn.clicked.connect(self.run_rate_model)
-        scan_btns.addWidget(self.rate_model_btn)
-
         # Deadtime button
         self.deadtime_btn = QPushButton("Deadtime")
         self.deadtime_btn.clicked.connect(self.run_deadtime)
@@ -971,6 +966,16 @@ class FuturisticDashboard(QWidget):
         self.rate_tod_btn = QPushButton("Rate vs. ToD")
         self.rate_tod_btn.clicked.connect(self.run_rate_vs_tod)
         scan_btns.addWidget(self.rate_tod_btn)
+
+        # Rate Model button
+        self.rate_model_btn = QPushButton("Rate Model")
+        self.rate_model_btn.clicked.connect(self.run_rate_model)
+        scan_btns.addWidget(self.rate_model_btn)
+
+        # Rate Residual button
+        self.rate_residual_btn = QPushButton("Rate Residual")
+        self.rate_residual_btn.clicked.connect(self.run_rate_residual)
+        scan_btns.addWidget(self.rate_residual_btn)
 
         # Add to layout
         left_panel.addLayout(scan_btns)
@@ -1312,7 +1317,7 @@ class FuturisticDashboard(QWidget):
             }}
         """
 
-        for btn in [self.rate_btn, self.rate_model_btn, self.deadtime_btn, self.adc_btn, self.pressure_btn,
+        for btn in [self.rate_btn, self.rate_model_btn, self.rate_residual_btn, self.deadtime_btn, self.adc_btn, self.pressure_btn,
             self.temperature_btn, self.acc_btn, self.gyro_btn, self.SiPM_btn, self.count_dist_btn, self.inter_event_btn, self.rate_pressure_btn, self.rate_temp_btn, self.rate_tod_btn]:
             btn.setStyleSheet(button_style)
 
@@ -2677,7 +2682,19 @@ class FuturisticDashboard(QWidget):
                                    linestyle='--', linewidth=2, color=color, alpha=0.9,
                                    label=f'{class_name} model (R²={r_squared:.3f})')
                 
-                # Store model info
+                # Store model info and coefficients for rate residual plotting
+                if not hasattr(self, 'model_data'):
+                    self.model_data = {}
+                
+                self.model_data[class_name] = {
+                    'coeffs': coeffs,
+                    'mean_rate': mean_rate,
+                    'mean_pressure': mean_pressure,
+                    'mean_temperature': mean_temperature,
+                    'has_time_of_day': has_time_of_day,
+                    'r_squared': r_squared
+                }
+                
                 if has_time_of_day:
                     amplitude_tod = np.sqrt(coeffs[2]**2 + coeffs[3]**2)
                     phase_rad = np.arctan2(coeffs[3], coeffs[2])
@@ -2734,6 +2751,156 @@ class FuturisticDashboard(QWidget):
         
         if not has_time_of_day:
             self.feed_box.append("Note: Time-of-day component not included (SD card file without absolute timestamps)")
+        
+        self.static_canvas.figure.tight_layout()
+        self.static_canvas.draw()
+        self.apply_theme()
+
+    def run_rate_residual(self):
+        """Plot rate residuals: rate - average_rate * (1 + model_prediction)."""
+        self.current_plot_function = self.run_rate_residual
+        self.toolbar.plot_type = "rate_residual"
+        
+        # Check if model has been computed
+        if not hasattr(self, 'model_data') or not self.model_data:
+            self.feed_box.append("Please run 'Rate Model' first to compute the model coefficients.")
+            return
+        
+        # Use live data if recording, otherwise use loaded file data
+        f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
+        
+        if f1 is None:
+            self.feed_box.append("No data available. Load a file or start recording.")
+            return
+        
+        # Check if we have enough data points
+        if len(f1.binned_time_m) < 5:
+            self.feed_box.append("Need at least 5 time bins for rate residual plotting.")
+            return
+        
+        # Determine which event classes to process based on radio button selection
+        if self.event_filter_all.isChecked():
+            event_classes = [
+                ('all', f1.binned_count_rate, f1.binned_count_rate_err, mycolors[7], 
+                 r'All Events'),
+                ('non_coin', f1.binned_count_rate_non_coincident, f1.binned_count_rate_err_non_coincident, mycolors[3],
+                 r'Non-Coincident'),
+                ('coin', f1.binned_count_rate_coincident, f1.binned_count_rate_err_coincident, mycolors[1],
+                 r'Coincident')
+            ]
+        elif self.event_filter_non_coin.isChecked():
+            event_classes = [
+                ('non_coin', f1.binned_count_rate_non_coincident, f1.binned_count_rate_err_non_coincident, mycolors[3],
+                 r'Non-Coincident')
+            ]
+        elif self.event_filter_coin.isChecked():
+            event_classes = [
+                ('coin', f1.binned_count_rate_coincident, f1.binned_count_rate_err_coincident, mycolors[1],
+                 r'Coincident')
+            ]
+        
+        # Clear the plot
+        self.static_ax.clear()
+        
+        # Prepare independent variables (normalized)
+        valid_mask = np.ones(len(f1.binned_time_m), dtype=bool)
+        
+        # Normalize pressure and temperature
+        pressure_normalized = (f1.binned_pressure[valid_mask] / 100.0)  # Pa to hPa
+        temperature_normalized = f1.binned_temperature[valid_mask]
+        
+        residual_info = []
+        
+        # Process each event class
+        for class_name, binned_rate, binned_rate_err, color, label in event_classes:
+            # Check if model exists for this class
+            if class_name not in self.model_data:
+                self.feed_box.append(f"No model found for {class_name}. Run 'Rate Model' first.")
+                continue
+            
+            model = self.model_data[class_name]
+            coeffs = model['coeffs']
+            mean_rate = model['mean_rate']
+            mean_pressure = model['mean_pressure']
+            mean_temperature = model['mean_temperature']
+            has_time_of_day = model['has_time_of_day']
+            
+            valid_rates = binned_rate[valid_mask]
+            
+            # Filter out zero or negative rates
+            rate_mask = valid_rates > 0
+            if np.sum(rate_mask) < 5:
+                self.feed_box.append(f"{class_name}: Not enough valid data points for residual plotting.")
+                continue
+            
+            # Apply mask
+            rates_filtered = valid_rates[rate_mask]
+            pressure_filtered = pressure_normalized[rate_mask]
+            temperature_filtered = temperature_normalized[rate_mask]
+            
+            # Calculate pressure and temperature deviations using stored means
+            pressure_dev = pressure_filtered - mean_pressure
+            temperature_dev = temperature_filtered - mean_temperature
+            
+            # Build design matrix
+            if has_time_of_day:
+                # Calculate time of day component
+                valid_binned_time_s = f1.binned_time_s[valid_mask][rate_mask]
+                first_event_time = np.min(f1.time_stamp_s)
+                absolute_bin_times = first_event_time + valid_binned_time_s
+                time_of_day_hours = (absolute_bin_times % 86400) / 3600.0
+                theta = 2 * np.pi * time_of_day_hours / 24.0
+                cos_theta = np.cos(theta)
+                sin_theta = np.sin(theta)
+                
+                X = np.column_stack([pressure_dev, temperature_dev, cos_theta, sin_theta])
+            else:
+                X = np.column_stack([pressure_dev, temperature_dev])
+            
+            # Calculate model prediction
+            model_fractional_dev = X @ coeffs
+            model_contribution = mean_rate * model_fractional_dev
+            
+            # Calculate residuals: rate - average_rate * model
+            residuals = rates_filtered - mean_rate - model_contribution
+            residuals_err = binned_rate_err[valid_mask][rate_mask]
+            
+            # Get time values for plotting
+            time_filtered = f1.binned_time_m[valid_mask][rate_mask]
+            
+            # Plot residuals
+            self.static_ax.errorbar(time_filtered, residuals,
+                                   yerr=residuals_err,
+                                   fmt='o', label=label, linewidth=2,
+                                   ecolor=color, markersize=4, alpha=0.7,
+                                   color=color)
+            
+            # Calculate residual statistics
+            mean_residual = np.mean(residuals)
+            std_residual = np.std(residuals)
+            residual_info.append(f"{class_name}: μ_res={mean_residual:.5f} Hz, σ_res={std_residual:.5f} Hz")
+        
+        # Add zero reference line
+        self.static_ax.axhline(y=0, color='gray', linestyle='--', alpha=0.7, linewidth=1.5, label='Zero residual')
+        
+        # Set plot properties
+        self.static_ax.set_xlabel('Time since first event [min]', fontsize=16, color='white')
+        self.static_ax.set_ylabel(r'Rate Residual [s$^{-1}$]', fontsize=16, color='white')
+        self.static_ax.set_title('Rate Residuals (Rate - Model)', fontsize=16, fontweight='bold', pad=20)
+        self.static_ax.legend(fontsize=10, loc='best', fancybox=False, frameon=False)
+        self.static_ax.grid(True, alpha=0.3)
+        
+        # Add annotation
+        bin_size = getattr(self, 'selected_bin_time', 30)
+        info_text = f'Residual = Rate - ⟨Rate⟩ × [1 + Model]\nTime interval: {bin_size}s'
+        self.static_ax.text(0.01, 0.98, info_text,
+                           transform=self.static_ax.transAxes,
+                           fontsize=9, verticalalignment='top',
+                           bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
+        # Print residual statistics to feed box
+        for info in residual_info:
+            self.feed_box.append(info)
         
         self.static_canvas.figure.tight_layout()
         self.static_canvas.draw()
