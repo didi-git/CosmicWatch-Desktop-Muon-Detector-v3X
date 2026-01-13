@@ -903,6 +903,11 @@ class FuturisticDashboard(QWidget):
         self.rate_btn.clicked.connect(self.run_rate)
         scan_btns.addWidget(self.rate_btn)
 
+        # Rate Model button
+        self.rate_model_btn = QPushButton("Rate Model")
+        self.rate_model_btn.clicked.connect(self.run_rate_model)
+        scan_btns.addWidget(self.rate_model_btn)
+
         # Deadtime button
         self.deadtime_btn = QPushButton("Deadtime")
         self.deadtime_btn.clicked.connect(self.run_deadtime)
@@ -1307,7 +1312,7 @@ class FuturisticDashboard(QWidget):
             }}
         """
 
-        for btn in [self.rate_btn, self.deadtime_btn, self.adc_btn, self.pressure_btn,
+        for btn in [self.rate_btn, self.rate_model_btn, self.deadtime_btn, self.adc_btn, self.pressure_btn,
             self.temperature_btn, self.acc_btn, self.gyro_btn, self.SiPM_btn, self.count_dist_btn, self.inter_event_btn, self.rate_pressure_btn, self.rate_temp_btn, self.rate_tod_btn]:
             btn.setStyleSheet(button_style)
 
@@ -2539,6 +2544,199 @@ class FuturisticDashboard(QWidget):
                            fontsize=12, verticalalignment='top',
                            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
         
+        self.apply_theme()
+
+    def run_rate_model(self):
+        """Plot rate with overlaid least-squares model curves for each event class."""
+        self.current_plot_function = self.run_rate_model
+        self.toolbar.plot_type = "rate_model"
+        
+        # Use live data if recording, otherwise use loaded file data
+        f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
+        
+        if f1 is None:
+            self.feed_box.append("No data available. Load a file or start recording.")
+            return
+        
+        # Check if we have enough data points for modeling
+        if len(f1.binned_time_m) < 5:
+            self.feed_box.append("Need at least 5 time bins for rate modeling.")
+            return
+        
+        # Check if we have absolute time information for time-of-day modeling
+        has_time_of_day = hasattr(f1, 'time_stamp_s')
+        
+        # Determine which event classes to process based on radio button selection
+        if self.event_filter_all.isChecked():
+            event_classes = [
+                ('all', f1.binned_count_rate, f1.binned_count_rate_err, mycolors[7], 
+                 r'All Events: ' + f'{f1.count_rate:.5f}' + '+/-' + f'{f1.count_rate_err:.5f}' + ' Hz'),
+                ('non_coin', f1.binned_count_rate_non_coincident, f1.binned_count_rate_err_non_coincident, mycolors[3],
+                 r'Non-Coincident:  ' + f'{f1.count_rate_non_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_non_coincident:.5f}' + ' Hz'),
+                ('coin', f1.binned_count_rate_coincident, f1.binned_count_rate_err_coincident, mycolors[1],
+                 r'Coincident:  ' + f'{f1.count_rate_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_coincident:.5f}' + ' Hz')
+            ]
+        elif self.event_filter_non_coin.isChecked():
+            event_classes = [
+                ('non_coin', f1.binned_count_rate_non_coincident, f1.binned_count_rate_err_non_coincident, mycolors[3],
+                 r'Non-Coincident:  ' + f'{f1.count_rate_non_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_non_coincident:.5f}' + ' Hz')
+            ]
+        elif self.event_filter_coin.isChecked():
+            event_classes = [
+                ('coin', f1.binned_count_rate_coincident, f1.binned_count_rate_err_coincident, mycolors[1],
+                 r'Coincident:  ' + f'{f1.count_rate_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_coincident:.5f}' + ' Hz')
+            ]
+        
+        # Clear the plot
+        self.static_ax.clear()
+        
+        # Prepare independent variables (normalized)
+        valid_mask = np.ones(len(f1.binned_time_m), dtype=bool)
+        
+        # Normalize pressure and temperature
+        pressure_normalized = (f1.binned_pressure[valid_mask] / 100.0)  # Pa to hPa
+        mean_pressure = np.mean(pressure_normalized)
+        pressure_dev = pressure_normalized - mean_pressure
+        
+        temperature_normalized = f1.binned_temperature[valid_mask]
+        mean_temperature = np.mean(temperature_normalized)
+        temperature_dev = temperature_normalized - mean_temperature
+        
+        # Time of day component (if available)
+        if has_time_of_day:
+            # Get absolute timestamps
+            valid_binned_time_s = f1.binned_time_s[valid_mask]
+            first_event_time = np.min(f1.time_stamp_s)
+            absolute_bin_times = first_event_time + valid_binned_time_s
+            
+            # Convert to time of day angle
+            time_of_day_hours = (absolute_bin_times % 86400) / 3600.0
+            theta = 2 * np.pi * time_of_day_hours / 24.0
+            
+            # We'll fit for phase, so create cos and sin components
+            cos_theta = np.cos(theta)
+            sin_theta = np.sin(theta)
+        
+        # Store model info for annotation
+        model_info = []
+        
+        # Fit and plot each event class
+        for class_name, binned_rate, binned_rate_err, color, label in event_classes:
+            valid_rates = binned_rate[valid_mask]
+            
+            # Filter out zero or negative rates
+            rate_mask = valid_rates > 0
+            if np.sum(rate_mask) < 5:
+                self.feed_box.append(f"{class_name}: Not enough valid data points for modeling.")
+                continue
+            
+            # Apply mask
+            rates_filtered = valid_rates[rate_mask]
+            pressure_filtered = pressure_dev[rate_mask]
+            temperature_filtered = temperature_dev[rate_mask]
+            
+            mean_rate = np.mean(rates_filtered)
+            rate_fractional_dev = (rates_filtered - mean_rate) / mean_rate
+            
+            # Build design matrix
+            if has_time_of_day:
+                cos_theta_filtered = cos_theta[rate_mask]
+                sin_theta_filtered = sin_theta[rate_mask]
+                X = np.column_stack([pressure_filtered, temperature_filtered, cos_theta_filtered, sin_theta_filtered])
+                param_names = ['α_P', 'α_T', 'B', 'C']
+            else:
+                X = np.column_stack([pressure_filtered, temperature_filtered])
+                param_names = ['α_P', 'α_T']
+            
+            # Fit model using least squares
+            try:
+                coeffs, residuals, rank, s = np.linalg.lstsq(X, rate_fractional_dev, rcond=None)
+                
+                # Calculate fitted values
+                fitted_fractional_dev = X @ coeffs
+                fitted_rates = mean_rate * (1 + fitted_fractional_dev)
+                
+                # Calculate R²
+                ss_res = np.sum((rate_fractional_dev - fitted_fractional_dev)**2)
+                ss_tot = np.sum((rate_fractional_dev - np.mean(rate_fractional_dev))**2)
+                r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+                
+                # Get time values for plotting (filtered)
+                time_filtered = f1.binned_time_m[valid_mask][rate_mask]
+                rates_filtered_err = binned_rate_err[valid_mask][rate_mask]
+                
+                # Plot data points
+                self.static_ax.errorbar(time_filtered, rates_filtered,
+                                       yerr=rates_filtered_err,
+                                       fmt='o', label=label, linewidth=2,
+                                       ecolor=color, markersize=3, alpha=0.7)
+                
+                # Sort by time for smooth curve plotting
+                sort_idx = np.argsort(time_filtered)
+                self.static_ax.plot(time_filtered[sort_idx], fitted_rates[sort_idx],
+                                   linestyle='--', linewidth=2, color=color, alpha=0.9,
+                                   label=f'{class_name} model (R²={r_squared:.3f})')
+                
+                # Store model info
+                if has_time_of_day:
+                    amplitude_tod = np.sqrt(coeffs[2]**2 + coeffs[3]**2)
+                    phase_rad = np.arctan2(coeffs[3], coeffs[2])
+                    phase_hours = (phase_rad * 24.0 / (2 * np.pi)) % 24
+                    model_info.append(f"{class_name}: α_P={coeffs[0]:.2e} hPa⁻¹, α_T={coeffs[1]:.2e} °C⁻¹, A_ToD={amplitude_tod:.2e}, φ={phase_hours:.1f}h, R²={r_squared:.3f}")
+                else:
+                    model_info.append(f"{class_name}: α_P={coeffs[0]:.2e} hPa⁻¹, α_T={coeffs[1]:.2e} °C⁻¹, R²={r_squared:.3f}")
+                
+            except Exception as e:
+                self.feed_box.append(f"Could not fit model for {class_name}: {e}")
+                # Still plot the data points
+                time_filtered = f1.binned_time_m[valid_mask][rate_mask]
+                rates_filtered_err = binned_rate_err[valid_mask][rate_mask]
+                self.static_ax.errorbar(time_filtered, rates_filtered,
+                                       yerr=rates_filtered_err,
+                                       fmt='o', label=label, linewidth=2,
+                                       ecolor=color, markersize=3, alpha=0.7)
+        
+        # Set plot properties
+        if self.event_filter_all.isChecked():
+            ymax_value = 1.3 * max(f1.binned_count_rate) if len(f1.binned_count_rate) > 0 else 1
+        elif self.event_filter_non_coin.isChecked():
+            ymax_value = 1.3 * max(f1.binned_count_rate_non_coincident) if len(f1.binned_count_rate_non_coincident) > 0 else 1
+        elif self.event_filter_coin.isChecked():
+            ymax_value = 1.3 * max(f1.binned_count_rate_coincident) if len(f1.binned_count_rate_coincident) > 0 else 1
+        else:
+            ymax_value = 1
+        
+        self.static_ax.set_xlim(min(f1.binned_time_m), max(f1.binned_time_m))
+        self.static_ax.set_ylim(0, ymax_value)
+        self.static_ax.set_xlabel('Time since first event [min]', fontsize=16, color='white')
+        self.static_ax.set_ylabel(r'Rate [s$^{-1}$]', fontsize=16, color='white')
+        self.static_ax.set_title('Detector Count Rate with Model', fontsize=16, fontweight='bold', pad=20)
+        self.static_ax.legend(fontsize=10, loc='upper right', fancybox=False, frameon=False)
+        self.static_ax.grid(True, alpha=0.3)
+        
+        # Add model info annotation
+        bin_size = getattr(self, 'selected_bin_time', 30)
+        model_type = "Model: Rate = ⟨Rate⟩ × [1 + α_P·ΔP + α_T·ΔT"
+        if has_time_of_day:
+            model_type += " + A·sin(θ+φ)]"
+        else:
+            model_type += "]"
+        
+        info_text = f'{model_type}\nTime interval: {bin_size}s\n⟨P⟩ = {mean_pressure:.1f} hPa\n⟨T⟩ = {mean_temperature:.1f} °C'
+        self.static_ax.text(0.01, 0.98, info_text,
+                           transform=self.static_ax.transAxes,
+                           fontsize=9, verticalalignment='top',
+                           bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
+        # Print model details to feed box
+        for info in model_info:
+            self.feed_box.append(info)
+        
+        if not has_time_of_day:
+            self.feed_box.append("Note: Time-of-day component not included (SD card file without absolute timestamps)")
+        
+        self.static_canvas.figure.tight_layout()
+        self.static_canvas.draw()
         self.apply_theme()
 
     def run_deadtime(self):
