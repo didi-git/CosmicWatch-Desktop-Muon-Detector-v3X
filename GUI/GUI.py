@@ -2162,6 +2162,16 @@ class FuturisticDashboard(QWidget):
             colors = [mycolors[1]]
             labels = [r'Coincident:  ' + f'{f1.count_rate_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_coincident:.5f}' + ' Hz']
         
+        # Determine ymax based on which event filter is selected
+        if self.event_filter_all.isChecked():
+            ymax_value = 1.3*max(f1.binned_count_rate) if len(f1.binned_count_rate) > 0 else 1
+        elif self.event_filter_non_coin.isChecked():
+            ymax_value = 1.3*max(f1.binned_count_rate_non_coincident) if len(f1.binned_count_rate_non_coincident) > 0 else 1
+        elif self.event_filter_coin.isChecked():
+            ymax_value = 1.3*max(f1.binned_count_rate_coincident) if len(f1.binned_count_rate_coincident) > 0 else 1
+        else:
+            ymax_value = 1
+        
         c = self.ratePlot(
             time=time_data,
             count_rates=count_rates,
@@ -2172,7 +2182,7 @@ class FuturisticDashboard(QWidget):
             xmin=min(f1.binned_time_m) if len(f1.binned_time_m) > 0 else 0,
             xmax=max(f1.binned_time_m) if len(f1.binned_time_m) > 0 else 1,
             ymin=0,
-            ymax=1.3*max(f1.binned_count_rate) if len(f1.binned_count_rate) > 0 else 1,
+            ymax=ymax_value,
             figsize=[7, 5],
             fontsize=16,
             alpha=1,
