@@ -739,29 +739,110 @@ class FuturisticDashboard(QWidget):
         self.custom_bin_input = QLineEdit()
         self.custom_bin_input.setText("30")  # Set default value
         self.custom_bin_input.setFixedWidth(80)
+        # Initial dark mode styling
         self.custom_bin_input.setStyleSheet("""
             QLineEdit {
                 background-color: #122c3d;
-                color: #eee;
-                border: 1px solid white;
+                color: #00ffcc;
+                border: 2px solid #00ffcc;
                 border-radius: 4px;
                 padding: 4px;
                 min-height: 20px;
+                font-weight: bold;
             }
             QLineEdit:focus {
-                border: 2px solid #00ffcc;
+                background-color: #1c3d4d;
+                border: 2px solid #00ffff;
+                color: #00ffff;
             }
         """)
         self.custom_bin_input.returnPressed.connect(self.select_custom_bin)
         binning_layout.addWidget(self.custom_bin_input)
         
-        custom_unit_label = QLabel("s")
-        custom_unit_label.setStyleSheet("""
+        self.custom_unit_label = QLabel("s")
+        self.custom_unit_label.setStyleSheet("""
             color: #eee;
             font-size: 14px;
             padding-left: 3px;
+            font-weight: bold;
         """)
-        binning_layout.addWidget(custom_unit_label)
+        binning_layout.addWidget(self.custom_unit_label)
+        
+        # Add spacer between bin time and event filter
+        binning_layout.addSpacing(30)
+        
+        # Add event class filter label
+        self.event_filter_label = QLabel("Event Filter:")
+        self.event_filter_label.setStyleSheet("""
+            font-family: 'Times New Roman', Times, serif;
+            color: #eee;
+            padding-left: 15px;
+            padding-right: 5px;
+            font-size: 18px;
+            font-weight: bold;
+        """)
+        binning_layout.addWidget(self.event_filter_label)
+        
+        # Add radio buttons for event class selection
+        self.event_filter_all = QRadioButton("All")
+        self.event_filter_non_coin = QRadioButton("Non-Coincident")
+        self.event_filter_coin = QRadioButton("Coincident")
+        
+        # Set "All" as default
+        self.event_filter_all.setChecked(True)
+        
+        # Style radio buttons with checkable button appearance (more visible)
+        radio_style = """
+            QRadioButton {
+                color: #eee;
+                font-size: 14px;
+                spacing: 8px;
+                padding: 4px;
+            }
+            QRadioButton::indicator {
+                width: 18px;
+                height: 18px;
+            }
+            QRadioButton::indicator::unchecked {
+                background-color: #1c2b3a;
+                border: 2px solid #00ffcc;
+                border-radius: 9px;
+            }
+            QRadioButton::indicator::unchecked:hover {
+                background-color: #253d52;
+                border: 2px solid #00ffff;
+            }
+            QRadioButton::indicator::checked {
+                background-color: #00ffcc;
+                border: 2px solid #00ffcc;
+                border-radius: 9px;
+                image: url(none);
+            }
+            QRadioButton::indicator::checked:hover {
+                background-color: #00ffdd;
+                border: 2px solid #00ffdd;
+            }
+            QRadioButton:hover {
+                color: #00ffff;
+            }
+        """
+        
+        self.event_filter_all.setStyleSheet(radio_style)
+        self.event_filter_non_coin.setStyleSheet(radio_style)
+        self.event_filter_coin.setStyleSheet(radio_style)
+        
+        # Add radio buttons to layout
+        binning_layout.addWidget(self.event_filter_all)
+        binning_layout.addWidget(self.event_filter_non_coin)
+        binning_layout.addWidget(self.event_filter_coin)
+        
+        # Connect radio buttons to refresh function
+        self.event_filter_all.toggled.connect(self.refresh_current_plot)
+        self.event_filter_non_coin.toggled.connect(self.refresh_current_plot)
+        self.event_filter_coin.toggled.connect(self.refresh_current_plot)
+        
+        # Track the current plot type for auto-refresh
+        self.current_plot_function = None
         
         # Add stretch to push everything to the left
         binning_layout.addStretch()
@@ -1228,20 +1309,134 @@ class FuturisticDashboard(QWidget):
             font-weight: bold;
         """)
         
-        # Custom bin input styling
-        self.custom_bin_input.setStyleSheet(f"""
-            QLineEdit {{
-                background-color: {t['button_background']};
-                color: {t['fg']};
-                border: 1px solid {t['button_border']};
-                border-radius: 4px;
-                padding: 4px;
-                min-height: 20px;
-            }}
-            QLineEdit:focus {{
-                border: 2px solid {t['accent']};
-            }}
+        # Unit label styling
+        self.custom_unit_label.setStyleSheet(f"""
+            color: {t['fg']};
+            font-size: 14px;
+            padding-left: 3px;
+            font-weight: bold;
         """)
+        
+        # Event filter label styling
+        self.event_filter_label.setStyleSheet(f"""
+            font-family: 'Times New Roman', Times, serif;
+            color: {t['fg']};
+            padding-left: 15px;
+            padding-right: 5px;
+            font-size: 18px;
+            font-weight: bold;
+        """)
+        
+        # Custom bin input styling
+        if self.current_theme == "dark":
+            bin_input_style = """
+                QLineEdit {
+                    background-color: #122c3d;
+                    color: #00ffcc;
+                    border: 2px solid #00ffcc;
+                    border-radius: 4px;
+                    padding: 4px;
+                    min-height: 20px;
+                    font-weight: bold;
+                }
+                QLineEdit:focus {
+                    background-color: #1c3d4d;
+                    border: 2px solid #00ffff;
+                    color: #00ffff;
+                }
+            """
+        else:  # light mode
+            bin_input_style = """
+                QLineEdit {
+                    background-color: #ffffff;
+                    color: #202020;
+                    border: 2px solid #0066cc;
+                    border-radius: 4px;
+                    padding: 4px;
+                    min-height: 20px;
+                    font-weight: bold;
+                }
+                QLineEdit:focus {
+                    background-color: #f0f8ff;
+                    border: 2px solid #0052a3;
+                    color: #0052a3;
+                }
+            """
+        self.custom_bin_input.setStyleSheet(bin_input_style)
+        
+        # Radio button styling for theme
+        if self.current_theme == "dark":
+            radio_style = """
+                QRadioButton {
+                    color: #eee;
+                    font-size: 14px;
+                    spacing: 8px;
+                    padding: 4px;
+                }
+                QRadioButton::indicator {
+                    width: 18px;
+                    height: 18px;
+                }
+                QRadioButton::indicator::unchecked {
+                    background-color: #1c2b3a;
+                    border: 2px solid #00ffcc;
+                    border-radius: 9px;
+                }
+                QRadioButton::indicator::unchecked:hover {
+                    background-color: #253d52;
+                    border: 2px solid #00ffff;
+                }
+                QRadioButton::indicator::checked {
+                    background-color: #00ffcc;
+                    border: 2px solid #00ffcc;
+                    border-radius: 9px;
+                }
+                QRadioButton::indicator::checked:hover {
+                    background-color: #00ffdd;
+                    border: 2px solid #00ffdd;
+                }
+                QRadioButton:hover {
+                    color: #00ffff;
+                }
+            """
+        else:  # light mode
+            radio_style = """
+                QRadioButton {
+                    color: #202020;
+                    font-size: 14px;
+                    spacing: 8px;
+                    padding: 4px;
+                }
+                QRadioButton::indicator {
+                    width: 18px;
+                    height: 18px;
+                }
+                QRadioButton::indicator::unchecked {
+                    background-color: #f0f0f0;
+                    border: 2px solid #0066cc;
+                    border-radius: 9px;
+                }
+                QRadioButton::indicator::unchecked:hover {
+                    background-color: #e0e0e0;
+                    border: 2px solid #0052a3;
+                }
+                QRadioButton::indicator::checked {
+                    background-color: #0066cc;
+                    border: 2px solid #0066cc;
+                    border-radius: 9px;
+                }
+                QRadioButton::indicator::checked:hover {
+                    background-color: #0052a3;
+                    border: 2px solid #0052a3;
+                }
+                QRadioButton:hover {
+                    color: #0052a3;
+                }
+            """
+        
+        self.event_filter_all.setStyleSheet(radio_style)
+        self.event_filter_non_coin.setStyleSheet(radio_style)
+        self.event_filter_coin.setStyleSheet(radio_style)
         
         # update coord_label
         # Coordinates label
@@ -1326,6 +1521,13 @@ class FuturisticDashboard(QWidget):
     def toggle_theme(self):
         self.current_theme = "light" if self.current_theme == "dark" else "dark"
         self.apply_theme()
+    
+    def refresh_current_plot(self):
+        """Refresh the current plot when event filter radio buttons change."""
+        if hasattr(self, 'current_plot_function') and self.current_plot_function is not None:
+            # Only refresh if data is loaded
+            if hasattr(self, 'cw') or (hasattr(self, 'read_serial_active') and self.read_serial_active):
+                self.current_plot_function()
 
     def load_file(self):
         if self.binning_selected == False: 
@@ -1622,6 +1824,7 @@ class FuturisticDashboard(QWidget):
         return cw
 
     def run_adc(self):
+        self.current_plot_function = self.run_adc  # Track current plot
         self.toolbar.plot_type = "ADC"
         # Use live data if recording, otherwise use loaded file data
         f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
@@ -1629,34 +1832,46 @@ class FuturisticDashboard(QWidget):
         if f1 is None:
             self.feed_box.append("No data available. Load a file or start recording.")
             return
-            
-        x_min = np.min(f1.adc)
-        x_max = np.max(f1.adc)
-
-        #if self.static_ax.get_xscale() == "log":
-        #    # multiplicative padding (e.g. 10% wider on each side in log space)
-        #    padding_factor = 0.1
-        #    xmin = x_min / (1 + padding_factor)
-        #    xmax = x_max * (1 + padding_factor)
-        #else:
-        #    # additive padding (10% of span)
-        span = x_max - x_min
-        padding = 0.1 * span
-        xmin = x_min - padding
-        xmax = x_max + padding
-
-
+        
+        # Determine which event classes to plot based on radio button selection
+        if self.event_filter_all.isChecked():
+            # Plot all three event classes
+            data = [f1.adc, f1.adc[~f1.select_coincident], f1.adc[f1.select_coincident]]
+            weights = [f1.weights, f1.weights[~f1.select_coincident], f1.weights[f1.select_coincident]]
+            colors = [mycolors[7], mycolors[3], mycolors[1]]
+            labels = [
+                r'All Events:  ' + f'{f1.count_rate:.5f}' + '+/-' + f'{f1.count_rate_err:.5f}' + ' Hz',
+                r'Non-Coincident:  ' + f'{f1.count_rate_non_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_non_coincident:.5f}' + ' Hz',
+                r'Coincident: ' + f'{f1.count_rate_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_coincident:.5f}' + ' Hz'
+            ]
+        elif self.event_filter_non_coin.isChecked():
+            # Plot only non-coincident events
+            data = [f1.adc[~f1.select_coincident]]
+            weights = [f1.weights[~f1.select_coincident]]
+            colors = [mycolors[3]]
+            labels = [r'Non-Coincident:  ' + f'{f1.count_rate_non_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_non_coincident:.5f}' + ' Hz']
+        elif self.event_filter_coin.isChecked():
+            # Plot only coincident events
+            data = [f1.adc[f1.select_coincident]]
+            weights = [f1.weights[f1.select_coincident]]
+            colors = [mycolors[1]]
+            labels = [r'Coincident: ' + f'{f1.count_rate_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_coincident:.5f}' + ' Hz']
+        
         c = self.NPlot(
-        data=[ f1.adc,f1.adc[~f1.select_coincident],f1.adc[f1.select_coincident]],
-        weights=[f1.weights,f1.weights[~f1.select_coincident],f1.weights[f1.select_coincident]],
-        colors=[mycolors[7], mycolors[3],mycolors[1]],
-        labels=[r'All Events:  ' + f'{f1.count_rate:.5f}' + '+/-' + f'{f1.count_rate_err:.5f}' +' Hz',
-                r'Non-Coincident:  ' + f'{f1.count_rate_non_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_non_coincident:.5f}' +' Hz',
-                r'Coincident: ' + f'{f1.count_rate_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_coincident:.5f}' +' Hz'],
-        ax = self.static_ax,
-        xmin=min(f1.adc), xmax= max(f1.adc),  ymin=0.1e-3, ymax=1.1,nbins=101,
-        xlabel='Measured 12-bit ADC peak value [0-4095]',
-        pdf_name= '_ADC.pdf',title = 'ADC Measurement')
+            data=data,
+            weights=weights,
+            colors=colors,
+            labels=labels,
+            ax=self.static_ax,
+            xmin=min(f1.adc),
+            xmax=max(f1.adc),
+            ymin=0.1e-3,
+            ymax=1.1,
+            nbins=101,
+            xlabel='Measured 12-bit ADC peak value [0-4095]',
+            pdf_name='_ADC.pdf',
+            title='ADC Measurement'
+        )
         self.apply_theme()
 
     def run_temperature(self):
@@ -1853,6 +2068,7 @@ class FuturisticDashboard(QWidget):
         self.apply_theme()
 
     def run_voltage(self):
+        self.current_plot_function = self.run_voltage  # Track current plot
         self.toolbar.plot_type = "SiPM_pulse_height"
         # Use live data if recording, otherwise use loaded file data
         f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
@@ -1866,22 +2082,51 @@ class FuturisticDashboard(QWidget):
         sipm_max = max(f1.sipm)
         xmin = max(0.01, sipm_min - 2)  # Ensure xmin is at least 0.1 for log scale
         xmax = sipm_max + 100
+        
+        # Determine which event classes to plot based on radio button selection
+        if self.event_filter_all.isChecked():
+            # Plot all three event classes
+            data = [f1.sipm, f1.sipm[~f1.select_coincident], f1.sipm[f1.select_coincident]]
+            weights = [f1.weights, f1.weights[~f1.select_coincident], f1.weights[f1.select_coincident]]
+            colors = [mycolors[7], mycolors[3], mycolors[1]]
+            labels = [
+                r'All Events:  ' + f'{f1.count_rate:.5f}' + '+/-' + f'{f1.count_rate_err:.5f}' + ' Hz',
+                r'Non-Coincident:  ' + f'{f1.count_rate_non_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_non_coincident:.5f}' + ' Hz',
+                r'Coincident: ' + f'{f1.count_rate_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_coincident:.5f}' + ' Hz'
+            ]
+        elif self.event_filter_non_coin.isChecked():
+            # Plot only non-coincident events
+            data = [f1.sipm[~f1.select_coincident]]
+            weights = [f1.weights[~f1.select_coincident]]
+            colors = [mycolors[3]]
+            labels = [r'Non-Coincident:  ' + f'{f1.count_rate_non_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_non_coincident:.5f}' + ' Hz']
+        elif self.event_filter_coin.isChecked():
+            # Plot only coincident events
+            data = [f1.sipm[f1.select_coincident]]
+            weights = [f1.weights[f1.select_coincident]]
+            colors = [mycolors[1]]
+            labels = [r'Coincident: ' + f'{f1.count_rate_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_coincident:.5f}' + ' Hz']
             
         c = self.NPlot(
-        data=[f1.sipm, f1.sipm[~f1.select_coincident],f1.sipm[f1.select_coincident]],
-        weights=[f1.weights, f1.weights[~f1.select_coincident],f1.weights[f1.select_coincident]],
-        colors=[mycolors[7], mycolors[3],mycolors[1]],
-        labels=[r'All Events:  ' + f'{f1.count_rate:.5f}' + '+/-' + f'{f1.count_rate_err:.5f}' +' Hz',
-                r'Non-Coincident:  ' + f'{f1.count_rate_non_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_non_coincident:.5f}' +' Hz',
-                r'Coincident: ' + f'{f1.count_rate_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_coincident:.5f}' +' Hz'],
-        ax = self.static_ax,
-        xmin=xmin, xmax=xmax, ymin=0.1e-3, ymax=1.1,xscale='log',
-        xlabel='SiPM Peak Voltage [mV]',fit_gaussian=True,
-        pdf_name='_SiPM_peak_voltage.pdf',title = 'SiPM Peak Voltage Measurement',)
+            data=data,
+            weights=weights,
+            colors=colors,
+            labels=labels,
+            ax=self.static_ax,
+            xmin=xmin,
+            xmax=xmax,
+            ymin=0.1e-3,
+            ymax=1.1,
+            xscale='log',
+            xlabel='SiPM Peak Voltage [mV]',
+            fit_gaussian=True,
+            pdf_name='_SiPM_peak_voltage.pdf',
+            title='SiPM Peak Voltage Measurement'
+        )
         self.apply_theme()
 
     def run_rate(self):
-
+        self.current_plot_function = self.run_rate  # Track current plot
         self.toolbar.plot_type = "rate" 
         # Use live data if recording, otherwise use loaded file data
         f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
@@ -1889,25 +2134,56 @@ class FuturisticDashboard(QWidget):
         if f1 is None:
             self.feed_box.append("No data available. Load a file or start recording.")
             return
-            
-        #self.toolbar.plot_type = "rate"
-        c = self.ratePlot(time = [f1.binned_time_m,f1.binned_time_m,f1.binned_time_m],
-        count_rates = [f1.binned_count_rate,f1.binned_count_rate_non_coincident,f1.binned_count_rate_coincident],
-        count_rates_err = [f1.binned_count_rate_err,f1.binned_count_rate_err_non_coincident,f1.binned_count_rate_err_coincident], 
-        colors=[mycolors[7], mycolors[3], mycolors[1]],
-        labels=[r'All Events: ' + f'{f1.count_rate:.5f}' + '+/-' + f'{f1.count_rate_err:.5f}' +' Hz', 
-                r'Non-Coincident:  ' + f'{f1.count_rate_non_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_non_coincident:.5f}' +' Hz',
-                r'Coincident:  ' + f'{f1.count_rate_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_coincident:.5f}' +' Hz'],
-        ax = self.static_ax,
-        xmin = min(f1.binned_time_m) if len(f1.binned_time_m) > 0 else 0, 
-        xmax = max(f1.binned_time_m) if len(f1.binned_time_m) > 0 else 1,
-        ymin = 0,
-        ymax = 1.3*max(f1.binned_count_rate) if len(f1.binned_count_rate) > 0 else 1,
-        figsize = [7,5],
-        fontsize = 16,alpha = 1,
-        xscale = 'linear',yscale = 'linear',xlabel = 'Time since first event [min]',ylabel = r'Rate [s$^{-1}$]',
-        loc = 1, pdf_name='_rate.pdf',title = 'Detector Count Rate')
-        #print(f1.binned_count_rate_err_non_coincident)
+        
+        # Determine which event classes to plot based on radio button selection
+        if self.event_filter_all.isChecked():
+            # Plot all three event classes
+            time_data = [f1.binned_time_m, f1.binned_time_m, f1.binned_time_m]
+            count_rates = [f1.binned_count_rate, f1.binned_count_rate_non_coincident, f1.binned_count_rate_coincident]
+            count_rates_err = [f1.binned_count_rate_err, f1.binned_count_rate_err_non_coincident, f1.binned_count_rate_err_coincident]
+            colors = [mycolors[7], mycolors[3], mycolors[1]]
+            labels = [
+                r'All Events: ' + f'{f1.count_rate:.5f}' + '+/-' + f'{f1.count_rate_err:.5f}' + ' Hz',
+                r'Non-Coincident:  ' + f'{f1.count_rate_non_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_non_coincident:.5f}' + ' Hz',
+                r'Coincident:  ' + f'{f1.count_rate_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_coincident:.5f}' + ' Hz'
+            ]
+        elif self.event_filter_non_coin.isChecked():
+            # Plot only non-coincident events
+            time_data = [f1.binned_time_m]
+            count_rates = [f1.binned_count_rate_non_coincident]
+            count_rates_err = [f1.binned_count_rate_err_non_coincident]
+            colors = [mycolors[3]]
+            labels = [r'Non-Coincident:  ' + f'{f1.count_rate_non_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_non_coincident:.5f}' + ' Hz']
+        elif self.event_filter_coin.isChecked():
+            # Plot only coincident events
+            time_data = [f1.binned_time_m]
+            count_rates = [f1.binned_count_rate_coincident]
+            count_rates_err = [f1.binned_count_rate_err_coincident]
+            colors = [mycolors[1]]
+            labels = [r'Coincident:  ' + f'{f1.count_rate_coincident:.5f}' + '+/-' + f'{f1.count_rate_err_coincident:.5f}' + ' Hz']
+        
+        c = self.ratePlot(
+            time=time_data,
+            count_rates=count_rates,
+            count_rates_err=count_rates_err,
+            colors=colors,
+            labels=labels,
+            ax=self.static_ax,
+            xmin=min(f1.binned_time_m) if len(f1.binned_time_m) > 0 else 0,
+            xmax=max(f1.binned_time_m) if len(f1.binned_time_m) > 0 else 1,
+            ymin=0,
+            ymax=1.3*max(f1.binned_count_rate) if len(f1.binned_count_rate) > 0 else 1,
+            figsize=[7, 5],
+            fontsize=16,
+            alpha=1,
+            xscale='linear',
+            yscale='linear',
+            xlabel='Time since first event [min]',
+            ylabel=r'Rate [s$^{-1}$]',
+            loc=1,
+            pdf_name='_rate.pdf',
+            title='Detector Count Rate'
+        )
         self.static_canvas.draw()
         
         # Add bin size annotation in upper left corner
@@ -1976,6 +2252,7 @@ class FuturisticDashboard(QWidget):
         """Plot the distribution of event counts per time interval with Poisson overlay."""
         from scipy.stats import poisson
         
+        self.current_plot_function = self.run_count_distribution  # Track current plot
         self.toolbar.plot_type = "count_distribution"
         # Use live data if recording, otherwise use loaded file data
         f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
@@ -2002,8 +2279,22 @@ class FuturisticDashboard(QWidget):
         counts_coin, _ = np.histogram(f1.PICO_timestamp_s[f1.select_coincident], bins=bins)
         lambda_coin = np.mean(counts_coin)
         
-        # Determine the maximum count across all types
-        max_count = int(max(np.max(counts_all), np.max(counts_non_coin), np.max(counts_coin)))
+        # Determine which event classes to plot based on radio button selection
+        if self.event_filter_all.isChecked():
+            # Plot all three event classes
+            max_count = int(max(np.max(counts_all), np.max(counts_non_coin), np.max(counts_coin)))
+            plot_all = plot_non_coin = plot_coin = True
+        elif self.event_filter_non_coin.isChecked():
+            # Plot only non-coincident events
+            max_count = int(np.max(counts_non_coin))
+            plot_all = plot_coin = False
+            plot_non_coin = True
+        elif self.event_filter_coin.isChecked():
+            # Plot only coincident events
+            max_count = int(np.max(counts_coin))
+            plot_all = plot_non_coin = False
+            plot_coin = True
+        
         count_bins = np.arange(0, max_count + 2) - 0.5  # Bin edges
         
         # Get observed distributions
@@ -2027,35 +2318,47 @@ class FuturisticDashboard(QWidget):
         # Clear the plot
         self.static_ax.clear()
         
-        # Bar width for grouped bars
-        bar_width = 0.25
+        # Bar width for grouped bars (adjust based on how many series)
+        num_series = sum([plot_all, plot_non_coin, plot_coin])
+        bar_width = 0.7 / num_series if num_series > 0 else 0.25
         x_positions = x_poisson
         
+        # Track offset for bar positions
+        current_offset = -(bar_width * (num_series - 1)) / 2
+        
         # Plot observed distributions as grouped bars with colors matching other plots
-        # All events: mycolors[7] (cyan/teal)
-        self.static_ax.bar(x_positions - bar_width, freq_all, width=bar_width, alpha=0.7, 
-                          color=mycolors[7], label='All Events (Obs)', edgecolor='white')
+        if plot_all:
+            # All events: mycolors[7] (cyan/teal)
+            self.static_ax.bar(x_positions + current_offset, freq_all, width=bar_width, alpha=0.7, 
+                              color=mycolors[7], label='All Events (Obs)', edgecolor='white')
+            current_offset += bar_width
         
-        # Non-coincident: mycolors[3] (orange)
-        self.static_ax.bar(x_positions, freq_non_coin, width=bar_width, alpha=0.7, 
-                          color=mycolors[3], label='Non-Coincident (Obs)', edgecolor='white')
+        if plot_non_coin:
+            # Non-coincident: mycolors[3] (orange)
+            self.static_ax.bar(x_positions + current_offset, freq_non_coin, width=bar_width, alpha=0.7, 
+                              color=mycolors[3], label='Non-Coincident (Obs)', edgecolor='white')
+            current_offset += bar_width
         
-        # Coincident: mycolors[1] (red)
-        self.static_ax.bar(x_positions + bar_width, freq_coin, width=bar_width, alpha=0.7, 
-                          color=mycolors[1], label='Coincident (Obs)', edgecolor='white')
+        if plot_coin:
+            # Coincident: mycolors[1] (red)
+            self.static_ax.bar(x_positions + current_offset, freq_coin, width=bar_width, alpha=0.7, 
+                              color=mycolors[1], label='Coincident (Obs)', edgecolor='white')
         
         # Overlay Poisson distributions as lines
-        self.static_ax.plot(x_poisson, y_poisson_all, color=mycolors[7], linestyle='--', 
-                           linewidth=2, marker='o', markersize=4, 
-                           label=f'All Poisson (λ={lambda_all:.2f})')
+        if plot_all:
+            self.static_ax.plot(x_poisson, y_poisson_all, color=mycolors[7], linestyle='--', 
+                               linewidth=2, marker='o', markersize=4, 
+                               label=f'All Poisson (λ={lambda_all:.2f})')
         
-        self.static_ax.plot(x_poisson, y_poisson_non_coin, color=mycolors[3], linestyle='--', 
-                           linewidth=2, marker='s', markersize=4,
-                           label=f'Non-Coin Poisson (λ={lambda_non_coin:.2f})')
+        if plot_non_coin:
+            self.static_ax.plot(x_poisson, y_poisson_non_coin, color=mycolors[3], linestyle='--', 
+                               linewidth=2, marker='s', markersize=4,
+                               label=f'Non-Coin Poisson (λ={lambda_non_coin:.2f})')
         
-        self.static_ax.plot(x_poisson, y_poisson_coin, color=mycolors[1], linestyle='--', 
-                           linewidth=2, marker='^', markersize=4,
-                           label=f'Coincident Poisson (λ={lambda_coin:.2f})')
+        if plot_coin:
+            self.static_ax.plot(x_poisson, y_poisson_coin, color=mycolors[1], linestyle='--', 
+                               linewidth=2, marker='^', markersize=4,
+                               label=f'Coincident Poisson (λ={lambda_coin:.2f})')
         
         # Set labels and title
         self.static_ax.set_xlabel(f'Number of Events per {bin_size}s Interval', fontsize=15)
@@ -2080,10 +2383,16 @@ class FuturisticDashboard(QWidget):
         self.static_ax.legend(fontsize=10, loc='upper right', fancybox=False, frameon=False, ncol=2)
         
         # Add statistics annotation on the right side
-        stats_text = (f'All: μ={lambda_all:.2f}, σ={np.std(counts_all):.2f}\n'
-                     f'Non-Coin: μ={lambda_non_coin:.2f}, σ={np.std(counts_non_coin):.2f}\n'
-                     f'Coincident: μ={lambda_coin:.2f}, σ={np.std(counts_coin):.2f}\n'
-                     f'Intervals: {total_intervals}')
+        stats_lines = []
+        if plot_all:
+            stats_lines.append(f'All: μ={lambda_all:.2f}, σ={np.std(counts_all):.2f}')
+        if plot_non_coin:
+            stats_lines.append(f'Non-Coin: μ={lambda_non_coin:.2f}, σ={np.std(counts_non_coin):.2f}')
+        if plot_coin:
+            stats_lines.append(f'Coincident: μ={lambda_coin:.2f}, σ={np.std(counts_coin):.2f}')
+        stats_lines.append(f'Intervals: {total_intervals}')
+        stats_text = '\n'.join(stats_lines)
+        
         self.static_ax.text(0.98, 0.65, stats_text,
                            transform=self.static_ax.transAxes,
                            fontsize=9, verticalalignment='top', horizontalalignment='right',
@@ -2108,6 +2417,7 @@ class FuturisticDashboard(QWidget):
         """Plot the distribution of time intervals between consecutive events with exponential overlay."""
         from scipy.stats import expon
         
+        self.current_plot_function = self.run_inter_event_time  # Track current plot
         self.toolbar.plot_type = "inter_event_time"
         # Use live data if recording, otherwise use loaded file data
         f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
@@ -2144,11 +2454,21 @@ class FuturisticDashboard(QWidget):
             inter_times_coin = np.array([])
             mean_coin = 0
         
-        # Determine histogram bins (use log spacing for better visualization)
-        # Find reasonable range for all data
-        all_times = np.concatenate([inter_times_all, 
-                                    inter_times_non_coin if len(inter_times_non_coin) > 0 else [],
-                                    inter_times_coin if len(inter_times_coin) > 0 else []])
+        # Determine which event classes to plot based on radio button selection
+        if self.event_filter_all.isChecked():
+            plot_all = plot_non_coin = plot_coin = True
+            # Find reasonable range for all data
+            all_times = np.concatenate([inter_times_all, 
+                                        inter_times_non_coin if len(inter_times_non_coin) > 0 else [],
+                                        inter_times_coin if len(inter_times_coin) > 0 else []])
+        elif self.event_filter_non_coin.isChecked():
+            plot_all = plot_coin = False
+            plot_non_coin = True
+            all_times = inter_times_non_coin if len(inter_times_non_coin) > 0 else inter_times_all[:1]
+        elif self.event_filter_coin.isChecked():
+            plot_all = plot_non_coin = False
+            plot_coin = True
+            all_times = inter_times_coin if len(inter_times_coin) > 0 else inter_times_all[:1]
         
         min_time = np.min(all_times)
         max_time = np.max(all_times)
@@ -2159,8 +2479,8 @@ class FuturisticDashboard(QWidget):
         
         # Calculate histograms (normalized to probability density)
         hist_all, bin_edges_all = np.histogram(inter_times_all, bins=bins, density=True)
-        hist_non_coin, bin_edges_non_coin = np.histogram(inter_times_non_coin, bins=bins, density=True) if len(inter_times_non_coin) > 0 else (np.array([]), bins)
-        hist_coin, bin_edges_coin = np.histogram(inter_times_coin, bins=bins, density=True) if len(inter_times_coin) > 0 else (np.array([]), bins)
+        hist_non_coin, _ = np.histogram(inter_times_non_coin, bins=bins, density=True) if len(inter_times_non_coin) > 0 else (np.array([]), bins)
+        hist_coin, _ = np.histogram(inter_times_coin, bins=bins, density=True) if len(inter_times_coin) > 0 else (np.array([]), bins)
         
         # Calculate bin centers for plotting
         bin_centers = (bin_edges_all[:-1] + bin_edges_all[1:]) / 2
@@ -2177,40 +2497,40 @@ class FuturisticDashboard(QWidget):
         self.static_ax.clear()
         
         # Plot histograms as step functions with colors matching other plots
-        # All events: mycolors[7] (cyan/teal)
-        self.static_ax.step(bin_centers, hist_all, where='mid', alpha=0.7, 
-                           color=mycolors[7], linewidth=2, label='All Events (Obs)')
+        if plot_all:
+            # All events: mycolors[7] (cyan/teal)
+            self.static_ax.step(bin_centers, hist_all, where='mid', alpha=0.7, 
+                               color=mycolors[7], linewidth=2, label='All Events (Obs)')
         
-        # Non-coincident: mycolors[3] (orange)
-        if len(inter_times_non_coin) > 0:
+        if plot_non_coin and len(inter_times_non_coin) > 0:
+            # Non-coincident: mycolors[3] (orange)
             self.static_ax.step(bin_centers, hist_non_coin, where='mid', alpha=0.7, 
                                color=mycolors[3], linewidth=2, label='Non-Coincident (Obs)')
         
-        # Coincident: mycolors[1] (red)
-        if len(inter_times_coin) > 0:
+        if plot_coin and len(inter_times_coin) > 0:
+            # Coincident: mycolors[1] (red)
             self.static_ax.step(bin_centers, hist_coin, where='mid', alpha=0.7, 
                                color=mycolors[1], linewidth=2, label='Coincident (Obs)')
         
         # Overlay exponential distributions as smooth curves
-        self.static_ax.plot(x_exp, y_exp_all, color=mycolors[7], linestyle='--', 
-                           linewidth=2, label=f'All Exp (μ={mean_all:.4f}s)')
+        if plot_all:
+            self.static_ax.plot(x_exp, y_exp_all, color=mycolors[7], linestyle='--', 
+                               linewidth=2, label=f'All Exp (μ={mean_all:.4f}s)')
         
-        if mean_non_coin > 0:
+        if plot_non_coin and mean_non_coin > 0:
             self.static_ax.plot(x_exp, y_exp_non_coin, color=mycolors[3], linestyle='--', 
                                linewidth=2, label=f'Non-Coin Exp (μ={mean_non_coin:.4f}s)')
         
-        if mean_coin > 0:
+        if plot_coin and mean_coin > 0:
             self.static_ax.plot(x_exp, y_exp_coin, color=mycolors[1], linestyle='--', 
                                linewidth=2, label=f'Coincident Exp (μ={mean_coin:.4f}s)')
         
         # Set log scale for both axes
-        #self.static_ax.set_xscale('log')
         self.static_ax.set_xscale('linear')
         self.static_ax.set_yscale('log')
-        #self.static_ax.set_yscale('linear')
         
         # Set fixed y-axis limits
-        self.static_ax.set_ylim(1e-10, 1e0)
+        self.static_ax.set_ylim(1e-10, 1e1)
         
         # Set x-axis to start at 0 and extend to max time
         self.static_ax.set_xlim(0, max_time * 1.05)
@@ -2224,12 +2544,24 @@ class FuturisticDashboard(QWidget):
         self.static_ax.legend(fontsize=10, loc='upper right', fancybox=False, frameon=False, ncol=2)
         
         # Add statistics annotation
-        stats_text = (f'All: μ={mean_all:.4f}s (Rate={1/mean_all:.2f} Hz)\n')
-        if mean_non_coin > 0:
-            stats_text += f'Non-Coin: μ={mean_non_coin:.4f}s (Rate={1/mean_non_coin:.2f} Hz)\n'
-        if mean_coin > 0:
-            stats_text += f'Coincident: μ={mean_coin:.4f}s (Rate={1/mean_coin:.2f} Hz)\n'
-        stats_text += f'Events: All={len(inter_times_all)}, Non-Coin={len(inter_times_non_coin)}, Coin={len(inter_times_coin)}'
+        stats_lines = []
+        if plot_all:
+            stats_lines.append(f'All: μ={mean_all:.4f}s (Rate={1/mean_all:.2f} Hz)')
+        if plot_non_coin and mean_non_coin > 0:
+            stats_lines.append(f'Non-Coin: μ={mean_non_coin:.4f}s (Rate={1/mean_non_coin:.2f} Hz)')
+        if plot_coin and mean_coin > 0:
+            stats_lines.append(f'Coincident: μ={mean_coin:.4f}s (Rate={1/mean_coin:.2f} Hz)')
+        
+        event_counts = []
+        if plot_all:
+            event_counts.append(f'All={len(inter_times_all)}')
+        if plot_non_coin:
+            event_counts.append(f'Non-Coin={len(inter_times_non_coin)}')
+        if plot_coin:
+            event_counts.append(f'Coin={len(inter_times_coin)}')
+        stats_lines.append(f'Events: {", ".join(event_counts)}')
+        
+        stats_text = '\n'.join(stats_lines)
         
         self.static_ax.text(0.98, 0.02, stats_text,
                            transform=self.static_ax.transAxes,
