@@ -952,6 +952,11 @@ class FuturisticDashboard(QWidget):
         self.inter_event_btn.clicked.connect(self.run_inter_event_time)
         scan_btns.addWidget(self.inter_event_btn)
 
+        # Rate vs Pressure Correlation button
+        self.rate_pressure_btn = QPushButton("Rate vs. P")
+        self.rate_pressure_btn.clicked.connect(self.run_rate_vs_pressure)
+        scan_btns.addWidget(self.rate_pressure_btn)
+
         # Add to layout
         left_panel.addLayout(scan_btns)
         main_layout.addLayout(left_panel, 0, 0)
@@ -1293,7 +1298,7 @@ class FuturisticDashboard(QWidget):
         """
 
         for btn in [self.rate_btn, self.deadtime_btn, self.adc_btn, self.pressure_btn,
-            self.temperature_btn, self.acc_btn, self.gyro_btn, self.SiPM_btn, self.count_dist_btn, self.inter_event_btn]:
+            self.temperature_btn, self.acc_btn, self.gyro_btn, self.SiPM_btn, self.count_dist_btn, self.inter_event_btn, self.rate_pressure_btn]:
             btn.setStyleSheet(button_style)
 
         # Apply to all bottom buttons
@@ -2065,6 +2070,98 @@ class FuturisticDashboard(QWidget):
                            fontsize=10, horizontalalignment='right', verticalalignment='bottom',
                            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
         
+        self.apply_theme()
+
+    def run_rate_vs_pressure(self):
+        """Plot correlation between (Rate - avg_rate)/avg_rate and Pressure - avg_Pressure."""
+        self.current_plot_function = self.run_rate_vs_pressure
+        self.toolbar.plot_type = "rate_vs_pressure"
+        
+        # Use live data if recording, otherwise use loaded file data
+        f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
+        
+        if f1 is None:
+            self.feed_box.append("No data available. Load a file or start recording.")
+            return
+        
+        # Determine which rate data to use based on event filter
+        if self.event_filter_all.isChecked():
+            binned_rate = f1.binned_count_rate
+            rate_label = "All Events"
+            marker_color = mycolors[7]
+        elif self.event_filter_non_coin.isChecked():
+            binned_rate = f1.binned_count_rate_non_coincident
+            rate_label = "Non-Coincident Events"
+            marker_color = mycolors[3]
+        elif self.event_filter_coin.isChecked():
+            binned_rate = f1.binned_count_rate_coincident
+            rate_label = "Coincident Events"
+            marker_color = mycolors[1]
+        
+        # Filter out zero rates
+        valid_mask = binned_rate > 0
+        
+        if np.sum(valid_mask) < 2:
+            self.feed_box.append("Not enough valid data points for rate vs pressure correlation.")
+            return
+        
+        # Calculate (Rate - average_rate) / average_rate * 100 (as percent)
+        valid_rates = binned_rate[valid_mask]
+        mean_rate = np.mean(valid_rates)
+        rate_fractional_dev = (valid_rates - mean_rate) / mean_rate * 100.0
+        
+        # Calculate Pressure - average_Pressure (convert to hPa)
+        valid_pressure = f1.binned_pressure[valid_mask] / 100.0  # Pa to hPa
+        mean_pressure = np.mean(valid_pressure)
+        pressure_normalized = valid_pressure - mean_pressure
+        
+        # Clear the plot
+        self.static_ax.clear()
+        
+        # Create scatter plot
+        self.static_ax.scatter(pressure_normalized, rate_fractional_dev, 
+                              color=marker_color, alpha=0.7, s=50, 
+                              label=rate_label, edgecolors='black', linewidths=0.5)
+        
+        # Add linear regression fit
+        try:
+            from scipy.stats import linregress
+            slope, intercept, r_value, p_value, std_err = linregress(pressure_normalized, rate_fractional_dev)
+            
+            # Plot fit line
+            x_fit = np.array([pressure_normalized.min(), pressure_normalized.max()])
+            y_fit = slope * x_fit + intercept
+            self.static_ax.plot(x_fit, y_fit, 'r--', linewidth=2, 
+                               label=f'Linear Fit\nSlope: {slope:.2e}\n$R^2$: {r_value**2:.3f}')
+            
+            # Add fit info to feed box
+            self.feed_box.append(f"Rate vs Pressure - Linear fit: slope = {slope:.4e}, R² = {r_value**2:.4f}, p-value = {p_value:.4e}")
+            
+        except Exception as e:
+            self.feed_box.append(f"Could not fit linear regression: {e}")
+        
+        # Add reference lines at zero
+        self.static_ax.axhline(y=0, color='gray', linestyle=':', alpha=0.5, linewidth=1)
+        self.static_ax.axvline(x=0, color='gray', linestyle=':', alpha=0.5, linewidth=1)
+        
+        # Labels and title
+        self.static_ax.set_xlabel('Pressure - $\\langle$Pressure$\\rangle$ [hPa]', fontsize=14)
+        self.static_ax.set_ylabel('$(\\mathrm{Rate} - \\langle\\mathrm{Rate}\\rangle) / \\langle\\mathrm{Rate}\\rangle$ [%]', fontsize=14)
+        self.static_ax.set_title('Rate-Pressure Correlation', fontsize=16, fontweight='bold', pad=20)
+        self.static_ax.legend(loc='best', fontsize=10, framealpha=0.9)
+        self.static_ax.grid(True, alpha=0.3)
+        
+        # Add info annotation
+        bin_size = getattr(self, 'selected_bin_time', 30)
+        info_text = f'Time interval: {bin_size}s\n$\\langle$Rate$\\rangle$ = {mean_rate:.2f} s$^{{-1}}$\n$\\langle$Pressure$\\rangle$ = {mean_pressure:.2f} hPa'
+        self.static_ax.text(0.02, 0.98, info_text, 
+                           transform=self.static_ax.transAxes,
+                           fontsize=10, verticalalignment='top',
+                           bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
+        # Adjust layout to prevent label cutoff
+        self.static_canvas.figure.tight_layout()
+        self.static_canvas.draw()
         self.apply_theme()
 
     def run_voltage(self):
