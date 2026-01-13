@@ -957,6 +957,16 @@ class FuturisticDashboard(QWidget):
         self.rate_pressure_btn.clicked.connect(self.run_rate_vs_pressure)
         scan_btns.addWidget(self.rate_pressure_btn)
 
+        # Rate vs Temperature Correlation button
+        self.rate_temp_btn = QPushButton("Rate vs. T")
+        self.rate_temp_btn.clicked.connect(self.run_rate_vs_temperature)
+        scan_btns.addWidget(self.rate_temp_btn)
+
+        # Rate vs Time of Day button
+        self.rate_tod_btn = QPushButton("Rate vs. ToD")
+        self.rate_tod_btn.clicked.connect(self.run_rate_vs_tod)
+        scan_btns.addWidget(self.rate_tod_btn)
+
         # Add to layout
         left_panel.addLayout(scan_btns)
         main_layout.addLayout(left_panel, 0, 0)
@@ -1298,7 +1308,7 @@ class FuturisticDashboard(QWidget):
         """
 
         for btn in [self.rate_btn, self.deadtime_btn, self.adc_btn, self.pressure_btn,
-            self.temperature_btn, self.acc_btn, self.gyro_btn, self.SiPM_btn, self.count_dist_btn, self.inter_event_btn, self.rate_pressure_btn]:
+            self.temperature_btn, self.acc_btn, self.gyro_btn, self.SiPM_btn, self.count_dist_btn, self.inter_event_btn, self.rate_pressure_btn, self.rate_temp_btn, self.rate_tod_btn]:
             btn.setStyleSheet(button_style)
 
         # Apply to all bottom buttons
@@ -2154,6 +2164,235 @@ class FuturisticDashboard(QWidget):
         # Add info annotation
         bin_size = getattr(self, 'selected_bin_time', 30)
         info_text = f'Time interval: {bin_size}s\n$\\langle$Rate$\\rangle$ = {mean_rate:.2f} s$^{{-1}}$\n$\\langle$Pressure$\\rangle$ = {mean_pressure:.2f} hPa'
+        self.static_ax.text(0.02, 0.98, info_text, 
+                           transform=self.static_ax.transAxes,
+                           fontsize=10, verticalalignment='top',
+                           bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
+        # Adjust layout to prevent label cutoff
+        self.static_canvas.figure.tight_layout()
+        self.static_canvas.draw()
+        self.apply_theme()
+
+    def run_rate_vs_temperature(self):
+        """Plot correlation between (Rate - avg_rate)/avg_rate and Temperature - avg_Temperature."""
+        self.current_plot_function = self.run_rate_vs_temperature
+        self.toolbar.plot_type = "rate_vs_temperature"
+        
+        # Use live data if recording, otherwise use loaded file data
+        f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
+        
+        if f1 is None:
+            self.feed_box.append("No data available. Load a file or start recording.")
+            return
+        
+        # Determine which rate data to use based on event filter
+        if self.event_filter_all.isChecked():
+            binned_rate = f1.binned_count_rate
+            rate_label = "All Events"
+            marker_color = mycolors[7]
+        elif self.event_filter_non_coin.isChecked():
+            binned_rate = f1.binned_count_rate_non_coincident
+            rate_label = "Non-Coincident Events"
+            marker_color = mycolors[3]
+        elif self.event_filter_coin.isChecked():
+            binned_rate = f1.binned_count_rate_coincident
+            rate_label = "Coincident Events"
+            marker_color = mycolors[1]
+        
+        # Filter out zero rates
+        valid_mask = binned_rate > 0
+        
+        if np.sum(valid_mask) < 2:
+            self.feed_box.append("Not enough valid data points for rate vs temperature correlation.")
+            return
+        
+        # Calculate (Rate - average_rate) / average_rate * 100 (as percent)
+        valid_rates = binned_rate[valid_mask]
+        mean_rate = np.mean(valid_rates)
+        rate_fractional_dev = (valid_rates - mean_rate) / mean_rate * 100.0
+        
+        # Calculate Temperature - average_Temperature
+        valid_temperature = f1.binned_temperature[valid_mask]
+        mean_temperature = np.mean(valid_temperature)
+        temperature_normalized = valid_temperature - mean_temperature
+        
+        # Clear the plot
+        self.static_ax.clear()
+        
+        # Create scatter plot
+        self.static_ax.scatter(temperature_normalized, rate_fractional_dev, 
+                              color=marker_color, alpha=0.7, s=50, 
+                              label=rate_label, edgecolors='black', linewidths=0.5)
+        
+        # Add linear regression fit
+        try:
+            from scipy.stats import linregress
+            slope, intercept, r_value, p_value, std_err = linregress(temperature_normalized, rate_fractional_dev)
+            
+            # Plot fit line
+            x_fit = np.array([temperature_normalized.min(), temperature_normalized.max()])
+            y_fit = slope * x_fit + intercept
+            self.static_ax.plot(x_fit, y_fit, 'r--', linewidth=2, 
+                               label=f'Linear Fit\nSlope: {slope:.2e}\n$R^2$: {r_value**2:.3f}')
+            
+            # Add fit info to feed box
+            self.feed_box.append(f"Rate vs Temperature - Linear fit: slope = {slope:.4e}, R² = {r_value**2:.4f}, p-value = {p_value:.4e}")
+            
+        except Exception as e:
+            self.feed_box.append(f"Could not fit linear regression: {e}")
+        
+        # Add reference lines at zero
+        self.static_ax.axhline(y=0, color='gray', linestyle=':', alpha=0.5, linewidth=1)
+        self.static_ax.axvline(x=0, color='gray', linestyle=':', alpha=0.5, linewidth=1)
+        
+        # Labels and title
+        self.static_ax.set_xlabel('Temperature - $\\langle$Temperature$\\rangle$ [$^\\circ$C]', fontsize=14)
+        self.static_ax.set_ylabel('$(\\mathrm{Rate} - \\langle\\mathrm{Rate}\\rangle) / \\langle\\mathrm{Rate}\\rangle$ [%]', fontsize=14)
+        self.static_ax.set_title('Rate-Temperature Correlation', fontsize=16, fontweight='bold', pad=20)
+        self.static_ax.legend(loc='best', fontsize=10, framealpha=0.9)
+        self.static_ax.grid(True, alpha=0.3)
+        
+        # Add info annotation
+        bin_size = getattr(self, 'selected_bin_time', 30)
+        info_text = f'Time interval: {bin_size}s\n$\\langle$Rate$\\rangle$ = {mean_rate:.2f} s$^{{-1}}$\n$\\langle$Temperature$\\rangle$ = {mean_temperature:.2f} $^\\circ$C'
+        self.static_ax.text(0.02, 0.98, info_text, 
+                           transform=self.static_ax.transAxes,
+                           fontsize=10, verticalalignment='top',
+                           bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
+        # Adjust layout to prevent label cutoff
+        self.static_canvas.figure.tight_layout()
+        self.static_canvas.draw()
+        self.apply_theme()
+
+    def run_rate_vs_tod(self):
+        """Plot correlation between (Rate - avg_rate)/avg_rate and fitted time-of-day model B*cos(θ) + C*sin(θ)."""
+        self.current_plot_function = self.run_rate_vs_tod
+        self.toolbar.plot_type = "rate_vs_tod"
+        
+        # Use live data if recording, otherwise use loaded file data
+        f1 = self.get_live_cw_object() if self.read_serial_active else getattr(self, 'cw', None)
+        
+        if f1 is None:
+            self.feed_box.append("No data available. Load a file or start recording.")
+            return
+        
+        # Check if we have absolute time information (from computer files)
+        if not hasattr(f1, 'time_stamp_s'):
+            self.feed_box.append("Time of day analysis requires data with absolute timestamps (computer-recorded files).")
+            return
+        
+        # Determine which rate data to use based on event filter
+        if self.event_filter_all.isChecked():
+            binned_rate = f1.binned_count_rate
+            rate_label = "All Events"
+            marker_color = mycolors[7]
+        elif self.event_filter_non_coin.isChecked():
+            binned_rate = f1.binned_count_rate_non_coincident
+            rate_label = "Non-Coincident Events"
+            marker_color = mycolors[3]
+        elif self.event_filter_coin.isChecked():
+            binned_rate = f1.binned_count_rate_coincident
+            rate_label = "Coincident Events"
+            marker_color = mycolors[1]
+        
+        # Filter out zero rates
+        valid_mask = binned_rate > 0
+        
+        if np.sum(valid_mask) < 3:
+            self.feed_box.append("Not enough valid data points for time of day analysis (need at least 3 points).")
+            return
+        
+        # Calculate (Rate - average_rate) / average_rate * 100 (as percent)
+        valid_rates = binned_rate[valid_mask]
+        mean_rate = np.mean(valid_rates)
+        rate_fractional_dev = (valid_rates - mean_rate) / mean_rate * 100.0
+        
+        # Get the absolute timestamps for each bin center
+        # binned_time_s is relative time, we need to map back to absolute time
+        valid_binned_time_s = f1.binned_time_s[valid_mask]
+        
+        # Calculate the absolute time for each bin by adding to the first event time
+        first_event_time = np.min(f1.time_stamp_s)
+        absolute_bin_times = first_event_time + valid_binned_time_s
+        
+        # Convert to time of day (hours since midnight)
+        # Use modulo to get time within 24 hours, then convert to hours
+        time_of_day_hours = (absolute_bin_times % 86400) / 3600.0  # 86400 seconds in a day
+        
+        # Convert to angle θ (radians)
+        theta = 2 * np.pi * time_of_day_hours / 24.0
+        
+        # Fit the model: rate_fractional_dev = B*cos(θ) + C*sin(θ)
+        # This is a linear regression problem with cos(θ) and sin(θ) as features
+        cos_theta = np.cos(theta)
+        sin_theta = np.sin(theta)
+        
+        # Stack features for linear regression
+        X = np.column_stack([cos_theta, sin_theta])
+        y = rate_fractional_dev
+        
+        # Solve using least squares: X @ [B, C]^T = y
+        try:
+            # Use numpy's least squares solver
+            coeffs, residuals, rank, s = np.linalg.lstsq(X, y, rcond=None)
+            B, C = coeffs
+            
+            # Calculate amplitude and phase
+            amplitude = np.sqrt(B**2 + C**2)
+            phase_rad = np.arctan2(C, B)
+            phase_hours = (phase_rad * 24.0 / (2 * np.pi)) % 24
+            
+            # Calculate sin(θ + φ) as the independent variable
+            # B*cos(θ) + C*sin(θ) = A*sin(θ + φ) where A = amplitude, φ = phase
+            sin_theta_plus_phi = np.sin(theta + phase_rad)
+            
+            # Calculate fitted values in original units (%)
+            fitted_values = amplitude * sin_theta_plus_phi
+            
+            # Calculate R² (coefficient of determination)
+            ss_res = np.sum((y - fitted_values)**2)
+            ss_tot = np.sum((y - np.mean(y))**2)
+            r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+            
+            self.feed_box.append(f"Time of Day Fit: Amplitude={amplitude:.4f}%, Phase={phase_hours:.2f}h, R²={r_squared:.4f}")
+            
+        except Exception as e:
+            self.feed_box.append(f"Could not fit time of day model: {e}")
+            return
+        
+        # Clear the plot
+        self.static_ax.clear()
+        
+        # Create scatter plot: rate deviation vs sin(θ + φ)
+        self.static_ax.scatter(sin_theta_plus_phi, rate_fractional_dev, 
+                              color=marker_color, alpha=0.7, s=50, 
+                              label=rate_label, edgecolors='black', linewidths=0.5)
+        
+        # Add the fitted line: y = amplitude * x (where x = sin(θ + φ))
+        x_fit = np.linspace(-1, 1, 100)
+        y_fit = amplitude * x_fit
+        self.static_ax.plot(x_fit, y_fit, 'r--', linewidth=2, 
+                           label=f'Fit: $A\\sin(\\theta + \\phi)$\n$A$ = {amplitude:.2f}%\n$R^2$ = {r_squared:.3f}')
+        
+        # Add reference lines at zero
+        self.static_ax.axhline(y=0, color='gray', linestyle=':', alpha=0.5, linewidth=1)
+        self.static_ax.axvline(x=0, color='gray', linestyle=':', alpha=0.5, linewidth=1)
+        
+        # Set x-axis limits to [-1, 1]
+        self.static_ax.set_xlim(-1.1, 1.1)
+        
+        # Labels and title
+        self.static_ax.set_xlabel('$\\sin(\\theta + \\phi)$', fontsize=14)
+        self.static_ax.set_ylabel('$(\\mathrm{Rate} - \\langle\\mathrm{Rate}\\rangle) / \\langle\\mathrm{Rate}\\rangle$ [%]', fontsize=14)
+        self.static_ax.set_title('Rate vs. Time of Day Correlation', fontsize=16, fontweight='bold', pad=20)
+        self.static_ax.legend(loc='best', fontsize=10, framealpha=0.9)
+        self.static_ax.grid(True, alpha=0.3)
+        
+        # Add info annotation
+        bin_size = getattr(self, 'selected_bin_time', 30)
+        info_text = f'$\\theta = 2\\pi t / 24$ h\nTime interval: {bin_size}s\n$\\langle$Rate$\\rangle$ = {mean_rate:.2f} s$^{{-1}}$\nAmplitude: {amplitude:.2f}%\nPeak at: {phase_hours:.1f}h'
         self.static_ax.text(0.02, 0.98, info_text, 
                            transform=self.static_ax.transAxes,
                            fontsize=10, verticalalignment='top',
