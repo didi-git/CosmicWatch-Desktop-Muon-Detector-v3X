@@ -16,7 +16,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Check if uv is installed
-if ! command -v uv &> /dev/null; then
+if ! which uv &> /dev/null; then
     echo "Error: uv package manager not found"
     echo "Install it from: https://github.com/astral-sh/uv"
     exit 1
@@ -40,10 +40,15 @@ echo "Step 3: Creating directories"
 mkdir -p /opt/cosmicwatch
 mkdir -p /var/data
 mkdir -p /var/log/cosmicwatch
+mkdir -p /home/cosmicwatch_logger
+mkdir -p /home/cosmicwatch_logger/.cache
 
 echo "  Setting ownership..."
+chown cosmicwatch_logger:cosmicwatch_logger /opt/cosmicwatch
 chown cosmicwatch_logger:cosmicwatch_logger /var/data
 chown cosmicwatch_logger:cosmicwatch_logger /var/log/cosmicwatch
+chown cosmicwatch_logger:cosmicwatch_logger /home/cosmicwatch_logger
+chown cosmicwatch_logger:cosmicwatch_logger /home/cosmicwatch_logger/.cache
 echo "  Done"
 
 echo ""
