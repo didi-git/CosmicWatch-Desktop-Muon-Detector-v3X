@@ -72,7 +72,7 @@ class CosmicWatchDaemon:
         """Open the serial port"""
         logger.info(f'Opening serial port: {SERIAL_PORT}')
         try:
-            self.serial_port = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=1)
+            self.serial_port = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=0.1)
             time.sleep(2)  # Give the device time to initialize
             logger.info('Serial port opened successfully')
             return True
@@ -153,42 +153,46 @@ class CosmicWatchDaemon:
         
         while self.running:
             try:
-                if self.serial_port.in_waiting:
-                    # Capture timestamp IMMEDIATELY when data is available
-                    timestamp = datetime.now()
-                    
-                    # Now read the line
-                    line = self.serial_port.readline().decode('utf-8', errors='ignore').replace('\r\n', '')
-                    
-                    if not line:
-                        continue
-                    
-                    # Parse and append timestamp
-                    data = line.split('\t')
-                    ti = str(timestamp).split(" ")
-                    comp_time = ti[-1]
-                    data.append(comp_time)
-                    
-                    comp_date = ti[0].split('-')
-                    data.append(comp_date[2] + '/' + comp_date[1] + '/' + comp_date[0])
-                    
-                    # Write to file
-                    self.data_file.write('\t'.join(data) + '\n')
-                    
-                    event_counter += 1
-                    
-                    # Periodic flush to disk (less frequent to reduce I/O overhead)
-                    current_time = time.time()
-                    if current_time - last_flush_time >= flush_interval:
-                        self.data_file.flush()
-                        last_flush_time = current_time
-                        
-                        # Log progress every 100 events
-                        if event_counter % 100 == 0:
-                            logger.debug(f'Events recorded: {event_counter}')
+                # Blocking read - returns immediately when line arrives
+                # Timeout prevents indefinite blocking
+                line = self.serial_port.readline()
                 
-                else:
-                    time.sleep(0.01)  # Small sleep to prevent busy-waiting
+                # Timestamp IMMEDIATELY after data arrives
+                timestamp = datetime.now()
+                
+                # Skip empty lines (timeout returns empty bytes)
+                if not line:
+                    continue
+                
+                # Decode after timestamping to minimize latency
+                line = line.decode('utf-8', errors='ignore').replace('\r\n', '')
+                
+                if not line:
+                    continue
+                
+                # Parse and append timestamp
+                data = line.split('\t')
+                ti = str(timestamp).split(" ")
+                comp_time = ti[-1]
+                data.append(comp_time)
+                
+                comp_date = ti[0].split('-')
+                data.append(comp_date[2] + '/' + comp_date[1] + '/' + comp_date[0])
+                
+                # Write to file (buffered, fast)
+                self.data_file.write('\t'.join(data) + '\n')
+                
+                event_counter += 1
+                
+                # Periodic flush to disk (less frequent to reduce I/O overhead)
+                current_time = time.time()
+                if current_time - last_flush_time >= flush_interval:
+                    self.data_file.flush()
+                    last_flush_time = current_time
+                    
+                    # Log progress every 100 events
+                    if event_counter % 100 == 0:
+                        logger.debug(f'Events recorded: {event_counter}')
             
             except serial.SerialException as e:
                 logger.error(f'Serial port error: {e}')

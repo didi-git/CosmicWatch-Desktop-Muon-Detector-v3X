@@ -123,6 +123,39 @@ sudo systemctl disable cosmicwatch.service
 sudo journalctl -u cosmicwatch.service -n 100
 ```
 
+## Updating the Daemon Script
+
+If you modify `import_data_daemon.py` and need to update the running service:
+
+### 1. Copy Updated Script
+
+From your development directory (where you modified the script):
+```bash
+sudo cp import_data_daemon.py /opt/cosmicwatch/
+sudo chown cosmicwatch_logger:cosmicwatch_logger /opt/cosmicwatch/import_data_daemon.py
+sudo chmod +x /opt/cosmicwatch/import_data_daemon.py
+```
+
+### 2. Restart the Service
+
+```bash
+sudo systemctl restart cosmicwatch.service
+```
+
+### 3. Verify the Update
+
+Check that the service started successfully:
+```bash
+sudo systemctl status cosmicwatch.service
+```
+
+View the logs to confirm new behavior:
+```bash
+sudo journalctl -u cosmicwatch.service -f
+```
+
+**Note:** Restarting the service will close the current data file and create a new one with a fresh timestamp.
+
 ## File Locations
 
 | Item | Location |
