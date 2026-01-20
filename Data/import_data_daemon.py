@@ -149,11 +149,15 @@ class CosmicWatchDaemon:
         logger.info('Starting data acquisition...')
         event_counter = 0
         last_flush_time = time.time()
-        flush_interval = 1.0  # Flush every second
+        flush_interval = 10.0  # Flush every 10 seconds to minimize I/O overhead
         
         while self.running:
             try:
                 if self.serial_port.in_waiting:
+                    # Capture timestamp IMMEDIATELY when data is available
+                    timestamp = datetime.now()
+                    
+                    # Now read the line
                     line = self.serial_port.readline().decode('utf-8', errors='ignore').replace('\r\n', '')
                     
                     if not line:
@@ -161,7 +165,7 @@ class CosmicWatchDaemon:
                     
                     # Parse and append timestamp
                     data = line.split('\t')
-                    ti = str(datetime.now()).split(" ")
+                    ti = str(timestamp).split(" ")
                     comp_time = ti[-1]
                     data.append(comp_time)
                     
@@ -173,7 +177,7 @@ class CosmicWatchDaemon:
                     
                     event_counter += 1
                     
-                    # Periodic flush
+                    # Periodic flush to disk (less frequent to reduce I/O overhead)
                     current_time = time.time()
                     if current_time - last_flush_time >= flush_interval:
                         self.data_file.flush()
