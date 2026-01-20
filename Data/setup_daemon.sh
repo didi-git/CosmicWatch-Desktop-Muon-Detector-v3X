@@ -4,6 +4,9 @@
 
 set -e
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 echo "=========================================="
 echo "CosmicWatch Daemon Setup Script"
 echo "=========================================="
@@ -54,17 +57,25 @@ echo "  Done"
 echo ""
 echo "Step 4: Creating Python virtual environment with uv"
 cd /opt/cosmicwatch
-sudo -u cosmicwatch_logger uv venv venv
+sudo -u cosmicwatch_logger uv venv venv --clear
 echo "  Virtual environment created"
 
 echo ""
 echo "Step 5: Installing Python dependencies"
-sudo -u cosmicwatch_logger /opt/cosmicwatch/venv/bin/pip install pyserial
+cd /opt/cosmicwatch
+sudo -u cosmicwatch_logger uv pip install --python venv --link-mode=copy pyserial
 echo "  Dependencies installed"
 
 echo ""
 echo "Step 6: Copying daemon script"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+echo "  Script directory: $SCRIPT_DIR"
+echo "  Looking for: $SCRIPT_DIR/import_data_daemon.py"
+if [ ! -f "$SCRIPT_DIR/import_data_daemon.py" ]; then
+    echo "  Error: import_data_daemon.py not found"
+    echo "  Contents of $SCRIPT_DIR:"
+    ls -la "$SCRIPT_DIR"
+    exit 1
+fi
 cp "$SCRIPT_DIR/import_data_daemon.py" /opt/cosmicwatch/
 chmod +x /opt/cosmicwatch/import_data_daemon.py
 chown cosmicwatch_logger:cosmicwatch_logger /opt/cosmicwatch/import_data_daemon.py
