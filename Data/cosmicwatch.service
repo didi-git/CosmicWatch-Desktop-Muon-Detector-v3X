@@ -1,0 +1,30 @@
+[Unit]
+Description=CosmicWatch Data Logger Daemon
+Documentation=https://github.com/didi-git/CosmicWatch-Desktop-Muon-Detector-v3X
+After=dev-tty_cosmicwatch.device network.target
+Requires=dev-tty_cosmicwatch.device
+
+[Service]
+Type=simple
+User=cosmicwatch_logger
+Group=cosmicwatch_logger
+WorkingDirectory=/var/data
+
+# Use virtual environment managed by uv
+ExecStart=/opt/cosmicwatch/venv/bin/python /opt/cosmicwatch/import_data_daemon.py
+
+# Restart configuration
+Restart=always
+RestartSec=5s
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Standard output/error to systemd journal
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cosmicwatch
+
+[Install]
+WantedBy=multi-user.target
